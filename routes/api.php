@@ -307,6 +307,15 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
     });
 
     // Sales (Australian invoicing): the screens in Sales use these. Everything is limited to the selected business.
+    // Payroll: employees of the business being worked in
+    Route::prefix('payroll')->group(function () {
+        Route::get('/employees', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'index']);
+        Route::post('/employees', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'store']);
+        Route::get('/employees/{id}', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'show'])->whereNumber('id');
+        Route::put('/employees/{id}', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'update'])->whereNumber('id');
+        Route::post('/employees/{id}/archive', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'setArchived'])->whereNumber('id');
+    });
+
     Route::prefix('sales')->group(function () {
         Route::get('/summary', [App\Http\Controllers\Api\Sales\SummaryController::class, 'show']);
         Route::get('/business', [App\Http\Controllers\Api\Sales\SummaryController::class, 'businessInfo']);
