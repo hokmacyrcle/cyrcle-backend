@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -34,7 +34,7 @@ return new class extends Migration
         DB::statement('
             ALTER TABLE emp_bank_accounts 
             ADD COLUMN primary_account_key VARCHAR(50) GENERATED ALWAYS AS 
-            (CASE WHEN is_primary_account = 1 THEN CONCAT(employee_id, "_", is_primary_account) ELSE NULL END) STORED
+            (CASE WHEN is_primary_account = 1 THEN CONCAT(employee_id, "_", is_primary_account) ELSE NULL END) VIRTUAL
         ');
 
         // Create unique index on the computed column (this will only enforce uniqueness for primary accounts)
