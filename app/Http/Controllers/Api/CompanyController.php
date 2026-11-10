@@ -153,4 +153,60 @@ class CompanyController extends Controller
             ]
         ], 200);
     }
-}
+
+    public function index(Request $request): JsonResponse
+    {
+        $perPage = (int) $request->query('per_page', 15);
+        $query = \App\Models\Company::where('user_id', $request->user()->id);
+        if ($search = $request->query('search')) {
+            $query->where('company_name', 'like', "%{$search}%");
+        }
+        return response()->json($query->orderBy('company_id')->paginate($perPage));
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'company_name' => 'required|string|max:255',
+            'company_abn' => 'nullable|digits:11',
+            'company_acn' => 'nullable|digits:9',
+            'gst_registered' => 'nullable|boolean',
+            'gst_number' => 'nullable|string|max:50',
+            'gst_registration_start_date' => 'nullable|date',
+            'company_registration_date' => 'nullable|date',
+            'company_type' => 'nullable|string|max:50',
+        ]);
+        $data['user_id'] = $request->user()->id;
+        $company = \App\Models\Company::create($data);
+        return response()->json(['success' => true, 'data' => $company], 201);
+    }
+
+    public function show(Request $request, $company): JsonResponse
+    {
+        $row = \App\Models\Company::where('user_id', $request->user()->id)->where('company_id', $company)->firstOrFail();
+        return response()->json(['success' => true, 'data' => $row]);
+    }
+
+    public function update(Request $request, $company): JsonResponse
+    {
+        $row = \App\Models\Company::where('user_id', $request->user()->id)->where('company_id', $company)->firstOrFail();
+        $data = $request->validate([
+            'company_name' => 'sometimes|required|string|max:255',
+            'company_abn' => 'nullable|digits:11',
+            'company_acn' => 'nullable|digits:9',
+            'gst_registered' => 'nullable|boolean',
+            'gst_number' => 'nullable|string|max:50',
+            'gst_registration_start_date' => 'nullable|date',
+            'company_registration_date' => 'nullable|date',
+            'company_type' => 'nullable|string|max:50',
+        ]);
+        $row->update($data);
+        return response()->json(['success' => true, 'data' => $row]);
+    }
+
+    public function destroy(Request $request, $company): JsonResponse
+    {
+        $row = \App\Models\Company::where('user_id', $request->user()->id)->where('company_id', $company)->firstOrFail();
+        $row->delete();
+        return response()->json(['success' => true]);
+    }}
