@@ -1,0 +1,1196 @@
+{
+  "info": {
+    "name": "Laravel API Collection",
+    "description": "Complete API collection for Laravel Invoice Management System with Tax Rates, Payment Terms, Customer Management, and Authentication",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{auth_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000/api",
+      "type": "string"
+    },
+    {
+      "key": "auth_token",
+      "value": "your_bearer_token_here",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🔐 Authentication",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"john@example.com\",\n  \"password\": \"password\",\n  \"password_confirmation\": \"password\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/forgot-password",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "forgot-password"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📊 Invoices",
+      "item": [
+        {
+          "name": "Get All Invoices",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/invoices?per_page=15&sort_by=invoice_date&sort_order=desc",
+              "host": ["{{base_url}}"],
+              "path": ["invoices"],
+              "query": [
+                {
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "sort_by",
+                  "value": "invoice_date"
+                },
+                {
+                  "key": "sort_order",
+                  "value": "desc"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Invoice by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/invoices/1",
+              "host": ["{{base_url}}"],
+              "path": ["invoices", "1"]
+            }
+          }
+        },
+        {
+          "name": "Create Invoice",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_id\": 1,\n  \"sent_to\": 1,\n  \"invoice_date\": \"2025-08-12\",\n  \"invoice_due_date\": \"2025-09-12\",\n  \"payment_term_id\": 1,\n  \"discount_type\": 10.00,\n  \"discount_method\": \"percentage\",\n  \"tax_rate\": 8.50,\n  \"items\": [\n    {\n      \"item_description\": \"Web Development Services\",\n      \"item_quantity\": 1,\n      \"item_rate\": 1000.00,\n      \"item_gst_rate\": 10.00\n    }\n  ],\n  \"notes\": \"Thank you for your business\",\n  \"terms\": \"Payment due within 30 days\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/invoices",
+              "host": ["{{base_url}}"],
+              "path": ["invoices"]
+            }
+          }
+        },
+        {
+          "name": "Update Invoice",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"invoice_status\": \"Sent\",\n  \"discount_type\": 15.00,\n  \"discount_method\": \"percentage\",\n  \"tax_rate\": 10.00\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/invoices/1",
+              "host": ["{{base_url}}"],
+              "path": ["invoices", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Invoice",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/invoices/1",
+              "host": ["{{base_url}}"],
+              "path": ["invoices", "1"]
+            }
+          }
+        },
+        {
+          "name": "Get Invoice Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/invoices/statistics",
+              "host": ["{{base_url}}"],
+              "path": ["invoices", "statistics"]
+            }
+          }
+        },
+        {
+          "name": "Get Invoice Form Data",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/invoices/form-data",
+              "host": ["{{base_url}}"],
+              "path": ["invoices", "form-data"]
+            }
+          }
+        },
+        {
+          "name": "Get Invoices by Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/invoices/status/Due",
+              "host": ["{{base_url}}"],
+              "path": ["invoices", "status", "Due"]
+            }
+          }
+        },
+        {
+          "name": "Get Overdue Invoices",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/invoices/overdue",
+              "host": ["{{base_url}}"],
+              "path": ["invoices", "overdue"]
+            }
+          }
+        },
+        {
+          "name": "Get Invoices with Advanced Filters",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/invoices?status=Due&payment_status=Unpaid&company_id=1&date_from=2025-01-01&date_to=2025-12-31&min_amount=100&max_amount=10000&search=ABC&sort_by=invoice_date&sort_order=desc&per_page=15",
+              "host": ["{{base_url}}"],
+              "path": ["invoices"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "Due"
+                },
+                {
+                  "key": "payment_status",
+                  "value": "Unpaid"
+                },
+                {
+                  "key": "company_id",
+                  "value": "1"
+                },
+                {
+                  "key": "date_from",
+                  "value": "2025-01-01"
+                },
+                {
+                  "key": "date_to",
+                  "value": "2025-12-31"
+                },
+                {
+                  "key": "min_amount",
+                  "value": "100"
+                },
+                {
+                  "key": "max_amount",
+                  "value": "10000"
+                },
+                {
+                  "key": "search",
+                  "value": "ABC"
+                },
+                {
+                  "key": "sort_by",
+                  "value": "invoice_date"
+                },
+                {
+                  "key": "sort_order",
+                  "value": "desc"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📋 Invoice Items",
+      "item": [
+        {
+          "name": "Get Invoice Items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/invoices/1/items",
+              "host": ["{{base_url}}"],
+              "path": ["invoices", "1", "items"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "💰 Invoice Transactions",
+      "item": [
+        {
+          "name": "Get Invoice Transactions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/invoices/1/transactions",
+              "host": ["{{base_url}}"],
+              "path": ["invoices", "1", "transactions"]
+            }
+          }
+        },
+        {
+          "name": "Add Transaction",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payment_amount\": 500.00,\n  \"payment_date\": \"2025-08-15\",\n  \"payment_method\": \"Bank Transfer\",\n  \"reference_number\": \"TXN123456\",\n  \"notes\": \"Partial payment received\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/invoices/1/transactions",
+              "host": ["{{base_url}}"],
+              "path": ["invoices", "1", "transactions"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "💸 Invoice Management",
+      "item": [
+        {
+          "name": "Update Invoice Discount",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"discount_type\": 20.00,\n  \"discount_method\": \"percentage\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/invoices/1/discount",
+              "host": ["{{base_url}}"],
+              "path": ["invoices", "1", "discount"]
+            }
+          }
+        },
+        {
+          "name": "Update Invoice Tax",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tax_rate\": 15.00\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/invoices/1/tax",
+              "host": ["{{base_url}}"],
+              "path": ["invoices", "1", "tax"]
+            }
+          }
+        },
+        {
+          "name": "Get Invoice Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/invoices/1/summary",
+              "host": ["{{base_url}}"],
+              "path": ["invoices", "1", "summary"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏢 Companies",
+      "item": [
+        {
+          "name": "Get All Companies",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/companies",
+              "host": ["{{base_url}}"],
+              "path": ["companies"]
+            }
+          }
+        },
+        {
+          "name": "Get Company by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/companies/1",
+              "host": ["{{base_url}}"],
+              "path": ["companies", "1"]
+            }
+          }
+        },
+        {
+          "name": "Create Company",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_name\": \"ABC Corporation\",\n  \"company_email\": \"info@abc.com\",\n  \"company_phone\": \"+1-555-0123\",\n  \"company_address\": \"123 Business St, City, State 12345\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/companies",
+              "host": ["{{base_url}}"],
+              "path": ["companies"]
+            }
+          }
+        },
+        {
+          "name": "Update Company",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_name\": \"ABC Corporation Updated\",\n  \"company_email\": \"info@abc-updated.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/companies/1",
+              "host": ["{{base_url}}"],
+              "path": ["companies", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Company",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/companies/1",
+              "host": ["{{base_url}}"],
+              "path": ["companies", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👥 Contacts",
+      "item": [
+        {
+          "name": "Get All Contacts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/contacts",
+              "host": ["{{base_url}}"],
+              "path": ["contacts"]
+            }
+          }
+        },
+        {
+          "name": "Get Contact by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/contacts/1",
+              "host": ["{{base_url}}"],
+              "path": ["contacts", "1"]
+            }
+          }
+        },
+        {
+          "name": "Create Contact",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contact_name\": \"John Doe\",\n  \"contact_email\": \"john@abc.com\",\n  \"contact_phone\": \"+1-555-0124\",\n  \"company_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/contacts",
+              "host": ["{{base_url}}"],
+              "path": ["contacts"]
+            }
+          }
+        },
+        {
+          "name": "Update Contact",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contact_name\": \"John Doe Updated\",\n  \"contact_email\": \"john-updated@abc.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/contacts/1",
+              "host": ["{{base_url}}"],
+              "path": ["contacts", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Contact",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/contacts/1",
+              "host": ["{{base_url}}"],
+              "path": ["contacts", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "💸 Tax Rates",
+      "item": [
+        {
+          "name": "Get All Tax Rates",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/tax-rates",
+              "host": ["{{base_url}}"],
+              "path": ["tax-rates"]
+            }
+          }
+        },
+        {
+          "name": "Get Tax Rate by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/tax-rates/1",
+              "host": ["{{base_url}}"],
+              "path": ["tax-rates", "1"]
+            }
+          }
+        },
+        {
+          "name": "Create Tax Rate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tax_name\": \"GST\",\n  \"agency_name\": \"Australian Taxation Office\",\n  \"rate\": 10.00,\n  \"type\": \"single\",\n  \"description\": \"Goods and Services Tax\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tax-rates",
+              "host": ["{{base_url}}"],
+              "path": ["tax-rates"]
+            }
+          }
+        },
+        {
+          "name": "Update Tax Rate",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rate\": 12.00,\n  \"description\": \"Updated GST rate\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tax-rates/1",
+              "host": ["{{base_url}}"],
+              "path": ["tax-rates", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Tax Rate",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/tax-rates/1",
+              "host": ["{{base_url}}"],
+              "path": ["tax-rates", "1"]
+            }
+          }
+        },
+        {
+          "name": "Get Active Tax Rates (Dropdown)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/tax-rates/active/dropdown",
+              "host": ["{{base_url}}"],
+              "path": ["tax-rates", "active", "dropdown"]
+            }
+          }
+        },
+        {
+          "name": "Toggle Tax Rate Status",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/tax-rates/1/toggle-status",
+              "host": ["{{base_url}}"],
+              "path": ["tax-rates", "1", "toggle-status"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📅 Payment Terms",
+      "item": [
+        {
+          "name": "Get All Payment Terms",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payment-terms",
+              "host": ["{{base_url}}"],
+              "path": ["payment-terms"]
+            }
+          }
+        },
+        {
+          "name": "Get Payment Term by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payment-terms/1",
+              "host": ["{{base_url}}"],
+              "path": ["payment-terms", "1"]
+            }
+          }
+        },
+        {
+          "name": "Create Payment Term",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Net 45\",\n  \"due_calculation_method\": \"fixed_days\",\n  \"fixed_days_value\": 45,\n  \"description\": \"Payment due in 45 days\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/payment-terms",
+              "host": ["{{base_url}}"],
+              "path": ["payment-terms"]
+            }
+          }
+        },
+        {
+          "name": "Update Payment Term",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fixed_days_value\": 60,\n  \"description\": \"Updated to 60 days\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/payment-terms/1",
+              "host": ["{{base_url}}"],
+              "path": ["payment-terms", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Payment Term",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payment-terms/1",
+              "host": ["{{base_url}}"],
+              "path": ["payment-terms", "1"]
+            }
+          }
+        },
+        {
+          "name": "Get Active Payment Terms (Dropdown)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payment-terms/active/dropdown",
+              "host": ["{{base_url}}"],
+              "path": ["payment-terms", "active", "dropdown"]
+            }
+          }
+        },
+        {
+          "name": "Calculate Due Date",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"invoice_date\": \"2025-08-12\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/payment-terms/1/calculate-due-date",
+              "host": ["{{base_url}}"],
+              "path": ["payment-terms", "1", "calculate-due-date"]
+            }
+          }
+        },
+        {
+          "name": "Toggle Payment Term Status",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payment-terms/1/toggle-status",
+              "host": ["{{base_url}}"],
+              "path": ["payment-terms", "1", "toggle-status"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🎯 Dropdowns",
+      "item": [
+        {
+          "name": "Get All Invoice Dropdowns",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dropdowns/invoice",
+              "host": ["{{base_url}}"],
+              "path": ["dropdowns", "invoice"]
+            }
+          }
+        },
+        {
+          "name": "Get Companies Dropdown",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dropdowns/companies",
+              "host": ["{{base_url}}"],
+              "path": ["dropdowns", "companies"]
+            }
+          }
+        },
+        {
+          "name": "Get Contacts Dropdown",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dropdowns/contacts",
+              "host": ["{{base_url}}"],
+              "path": ["dropdowns", "contacts"]
+            }
+          }
+        },
+        {
+          "name": "Get Tax Rates Dropdown",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dropdowns/tax-rates",
+              "host": ["{{base_url}}"],
+              "path": ["dropdowns", "tax-rates"]
+            }
+          }
+        },
+        {
+          "name": "Get Payment Terms Dropdown",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dropdowns/payment-terms",
+              "host": ["{{base_url}}"],
+              "path": ["dropdowns", "payment-terms"]
+            }
+          }
+        },
+        {
+          "name": "Get Contacts by Company",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dropdowns/contacts-by-company/1",
+              "host": ["{{base_url}}"],
+              "path": ["dropdowns", "contacts-by-company", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👨‍💼 Employees",
+      "item": [
+        {
+          "name": "Get All Employees",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/employees",
+              "host": ["{{base_url}}"],
+              "path": ["employees"]
+            }
+          }
+        },
+        {
+          "name": "Get Employee by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/employees/1",
+              "host": ["{{base_url}}"],
+              "path": ["employees", "1"]
+            }
+          }
+        },
+        {
+          "name": "Create Employee",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_name\": \"Jane Smith\",\n  \"employee_email\": \"jane@company.com\",\n  \"employee_phone\": \"+1-555-0125\",\n  \"employee_designation_id\": 1,\n  \"employee_salary\": 50000.00\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/employees",
+              "host": ["{{base_url}}"],
+              "path": ["employees"]
+            }
+          }
+        },
+        {
+          "name": "Update Employee",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_salary\": 55000.00\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/employees/1",
+              "host": ["{{base_url}}"],
+              "path": ["employees", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Employee",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/employees/1",
+              "host": ["{{base_url}}"],
+              "path": ["employees", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏷️ Employee Designations",
+      "item": [
+        {
+          "name": "Get All Employee Designations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/employee-designations",
+              "host": ["{{base_url}}"],
+              "path": ["employee-designations"]
+            }
+          }
+        },
+        {
+          "name": "Get Employee Designation by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/employee-designations/1",
+              "host": ["{{base_url}}"],
+              "path": ["employee-designations", "1"]
+            }
+          }
+        },
+        {
+          "name": "Create Employee Designation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"designation_name\": \"Senior Developer\",\n  \"description\": \"Senior level software developer\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/employee-designations",
+              "host": ["{{base_url}}"],
+              "path": ["employee-designations"]
+            }
+          }
+        },
+        {
+          "name": "Update Employee Designation",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"designation_name\": \"Lead Developer\",\n  \"description\": \"Team lead developer\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/employee-designations/1",
+              "host": ["{{base_url}}"],
+              "path": ["employee-designations", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Employee Designation",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/employee-designations/1",
+              "host": ["{{base_url}}"],
+              "path": ["employee-designations", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📍 Locations",
+      "item": [
+        {
+          "name": "Get All Locations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/locations",
+              "host": ["{{base_url}}"],
+              "path": ["locations"]
+            }
+          }
+        },
+        {
+          "name": "Get Location by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/locations/1",
+              "host": ["{{base_url}}"],
+              "path": ["locations", "1"]
+            }
+          }
+        },
+        {
+          "name": "Create Location",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"location_name\": \"Main Office\",\n  \"location_address\": \"123 Main St, City, State 12345\",\n  \"location_type\": \"office\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/locations",
+              "host": ["{{base_url}}"],
+              "path": ["locations"]
+            }
+          }
+        },
+        {
+          "name": "Update Location",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"location_name\": \"Main Office Updated\",\n  \"location_address\": \"456 Updated St, City, State 12345\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/locations/1",
+              "host": ["{{base_url}}"],
+              "path": ["locations", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Location",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/locations/1",
+              "host": ["{{base_url}}"],
+              "path": ["locations", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📊 Audit Logs",
+      "item": [
+        {
+          "name": "Get All Audit Logs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/audit-logs",
+              "host": ["{{base_url}}"],
+              "path": ["audit-logs"]
+            }
+          }
+        },
+        {
+          "name": "Get Audit Log by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/audit-logs/1",
+              "host": ["{{base_url}}"],
+              "path": ["audit-logs", "1"]
+            }
+          }
+        },
+        {
+          "name": "Get Audit Logs by User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/audit-logs/user/1",
+              "host": ["{{base_url}}"],
+              "path": ["audit-logs", "user", "1"]
+            }
+          }
+        },
+        {
+          "name": "Get Audit Logs by Model",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/audit-logs/model/Invoice",
+              "host": ["{{base_url}}"],
+              "path": ["audit-logs", "model", "Invoice"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

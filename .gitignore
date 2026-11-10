@@ -1,0 +1,53 @@
+# Laravel & PHP specific
+/vendor
+/node_modules
+/public/storage
+/storage/*.key
+
+# Laravel environment & config
+.env
+.env.*.php
+.env.php
+.phpunit.result.cache
+Homestead.yaml
+Homestead.json
+
+# Laravel logs and cache
+/storage/logs
+/storage/framework/cache
+/storage/framework/sessions
+/storage/framework/testing
+/storage/framework/views
+
+# IDE & OS-specific
+.idea
+.vscode
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Composer & NPM lock files (optional, keep if you want reproducible builds)
+composer.lock
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+*.json
+*.lock
+*.lock.json
+*.lock.yaml
+*.lock.yml
+*.lock.json
+*.lock.yaml
+*.md
+# Laravel Mix / Vite build
+/public/hot
+/public/build
+npm-debug.log
+yarn-error.log
+/storage/oauth-*.key
+.env
+
+.rnd
+/storage/storage/

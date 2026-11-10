@@ -1,0 +1,93 @@
+Employee Leave API Documentation
+
+Base URL: /api
+Auth: Bearer token required. Company context is derived from token.
+Approver rights: Company owner OR employee (same company) with authorised_to_approve_leave = true.
+
+1) Assign Leave Type
+POST /assign-leave-type
+Body (required):
+{
+  "employee_id": 1,
+  "leave_type_id": 10,
+  "leave_cat": "Paid Leave",
+  "leave_calculation_method_id": 4,
+  "hours_accured_annually": 152,
+  "termination_unused_balnce": "Not Paid Out"
+}
+Optional: { "openning_balance": 100, "hours_employee_works_fortnightly": 76 }
+Response: { success, message, data }
+
+GET /employees/{employeeId}/assign-leave-types → { success, data: [...] }
+GET /assign-leave-type/{id} → { success, data }
+PUT /assign-leave-type/{id} → { success, message, data }
+DELETE /assign-leave-type/{id} → { success, message }
+Note: Unique per (employee_id, company_id, leave_type_id)
+
+2) Dropdowns
+GET /leave-type-dropdowns → { success, data: { leave_types[], calculation_methods[], termination_options[] } }
+GET /employees/{employeeId}/available-leave-types → { success, data: { leave_types[] } }
+
+3) Leave Balances
+GET /employees/{employeeId}/leave-balances
+Returns array of: { type, balance_hours, opening_hours }
+Balance computation: balance_hours prefers openning_balance if set else hours_accured_annually.
+
+4) Leave Requests
+POST /leave-requests
+Body (typical – Pending):
+{
+  "employee_id": 1,
+  "leave_type": "Annual Leave",
+  "description": "Family trip",
+  "start_date": "2025-09-12",
+  "end_date": "2025-09-15"
+}
+Optional: { "approved": true, "pay_period_hours": 7.5 }
+Behavior:
+- approved omitted or false ⇒ status Pending (no balance deduction)
+- approved true ⇒ status Pending on create but balance is deducted immediately; status changes via approve endpoint
+Auto-calculation of pay_period_hours uses employee assignment + method:
+- Fixed Amount Each Period: openning_balance
+- Manually Recorded Rate: provided pay_period_hours (or 0)
+- No Calculation Required: 0
+- Based on Ordinary Earnings: hours_employee_works_fortnightly; fallback hours_accured_annually / 26
+- Unknown: provided pay_period_hours or 0
+
+GET /leave-requests (Approver/Owner)
+Response (paginated):
+{
+  success,
+  data: {
+    current_page, per_page, total, last_page,
+    data: [
+      {
+        leave_request_id,
+        employee_name,
+        leave_type,
+        status,
+        from_date,
+        end_date,
+        description
+      }
+    ]
+  }
+}
+
+GET /leave-requests/{leaveRequestId} (Approver/Owner)
+Returns: { employee_name, leave_type, status, from_date, end_date, description, leave_request_id }
+
+POST /leave-requests/{leaveRequestId}/approve (Approver/Owner)
+Response: { success, message }
+Effect: status → Approved, approved_by/approved_at set, balance deducted using pay_period_hours.
+
+POST /leave-requests/{leaveRequestId}/reject (Approver/Owner)
+Body: { "reject_reason": "text" }
+Response: { success, message }
+Effect: status → Rejected, reject_reason saved, approved_by/approved_at set, no balance change.
+
+Security & Validation Notes
+- All operations scoped by token company_id.
+- Employee must belong to that company.
+- Duplicate assignments prevented (controller + DB unique index).
+- approved on create defaults to false.
