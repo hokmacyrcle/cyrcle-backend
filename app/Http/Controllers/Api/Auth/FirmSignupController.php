@@ -88,9 +88,7 @@ class FirmSignupController extends Controller
     {
         $user = $request->user();
 
-        if (!$user->email_verified_at) {
-            return $this->fail(403, 'Verify your email first.');
-        }
+        // Email verification is switched off for now; every new firm is approved by hand instead.
         if (Company::where('user_id', $user->id)->where('company_type', 'Subscriber')->exists()) {
             return $this->fail(409, 'You have already registered a firm.');
         }
