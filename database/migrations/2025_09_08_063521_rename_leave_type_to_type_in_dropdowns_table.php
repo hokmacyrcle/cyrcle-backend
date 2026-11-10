@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -12,6 +12,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (!Schema::hasColumn('dropdowns', 'leave_type')) {
+            return;
+        }
+
         Schema::table('dropdowns', function (Blueprint $table) {
             $table->string('type', 100)->after('id');
         });
@@ -41,3 +45,4 @@ return new class extends Migration
         });
     }
 };
+
