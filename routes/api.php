@@ -314,6 +314,13 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
         Route::get('/employees/{id}', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'show'])->whereNumber('id');
         Route::put('/employees/{id}', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'update'])->whereNumber('id');
         Route::post('/employees/{id}/archive', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'setArchived'])->whereNumber('id');
+        Route::get('/pay-runs', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'index']);
+        Route::post('/pay-runs', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'store']);
+        Route::get('/pay-runs/{id}', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'show'])->whereNumber('id');
+        Route::delete('/pay-runs/{id}', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'destroy'])->whereNumber('id');
+        Route::post('/pay-runs/{id}/finalise', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'finalise'])->whereNumber('id');
+        Route::put('/pay-runs/{id}/lines/{lineId}', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'updateLine'])->whereNumber('id')->whereNumber('lineId');
+        Route::delete('/pay-runs/{id}/lines/{lineId}', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'destroyLine'])->whereNumber('id')->whereNumber('lineId');
     });
 
     Route::prefix('sales')->group(function () {

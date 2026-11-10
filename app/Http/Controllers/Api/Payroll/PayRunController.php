@@ -1,0 +1,393 @@
+<?php
+
+namespace App\Http\Controllers\Api\Payroll;
+
+use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\Sales\Concerns\SalesSupport;
+use App\Models\Employee;
+use App\Models\EmploymentInformation;
+use App\Models\PayRun;
+use App\Models\PayRunLine;
+use App\Models\SuperannuationFund;
+use App\Models\TaxDetail;
+use App\Services\Payroll\PayCalculator as Calc;
+use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
+
+/**
+ * Pay runs for the business being worked in. A run is built from the current employees, calculated in whole cents,
+ * reviewed line by line, then finalised. A finalised run can no longer be changed.
+ */
+class PayRunController extends Controller
+{
+    use SalesSupport;
+
+    private const FREQUENCIES = [Calc::WEEKLY, Calc::FORTNIGHTLY, Calc::MONTHLY];
+
+    public function index(Request $request): JsonResponse
+    {
+        if (!$b = $this->business()) {
+            return $this->noBusiness();
+        }
+        $q = PayRun::where('company_id', $b->company_id);
+        if (in_array($request->query('status'), ['draft', 'finalised'], true)) {
+            $q->where('status', $request->query('status'));
+        }
+        $page = $q->orderByDesc('pay_date')->orderByDesc('id')->paginate(15);
+        $counts = PayRunLine::whereIn('pay_run_id', $page->pluck('id'))->selectRaw('pay_run_id, COUNT(*) c')->groupBy('pay_run_id')->pluck('c', 'pay_run_id');
+
+        return response()->json([
+            'data' => $page->getCollection()->map(fn (PayRun $r) => $this->row($r, (int) ($counts[$r->id] ?? 0)))->values(),
+            'meta' => ['page' => $page->currentPage(), 'per_page' => $page->perPage(), 'total' => $page->total(), 'last_page' => $page->lastPage()],
+        ]);
+    }
+
+    public function show(int $id): JsonResponse
+    {
+        if (!$b = $this->business()) {
+            return $this->noBusiness();
+        }
+        $run = PayRun::where('company_id', $b->company_id)->where('id', $id)->first();
+        return $run ? response()->json(['data' => $this->full($run, $b)]) : $this->failure('Pay run not found.', 404);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        if (!$b = $this->business()) {
+            return $this->noBusiness();
+        }
+        $v = Validator::make($request->all(), [
+            'frequency' => ['required', Rule::in(self::FREQUENCIES)],
+            'period_start' => ['required', 'date'],
+            'period_end' => ['required', 'date', 'after_or_equal:period_start'],
+            'pay_date' => ['required', 'date', 'after_or_equal:period_start'],
+        ], [
+            'frequency.required' => 'Choose how often this group is paid.',
+            'period_start.required' => 'Enter the first day of the pay period.',
+            'period_end.required' => 'Enter the last day of the pay period.',
+            'period_end.after_or_equal' => 'The last day cannot be before the first day.',
+            'pay_date.required' => 'Enter the day employees are paid.',
+            'pay_date.after_or_equal' => 'The pay date cannot be before the period starts.',
+        ]);
+        if ($v->fails()) {
+            return $this->failure('Please fix the highlighted fields.', 422, $v->errors()->toArray());
+        }
+        $d = $v->validated();
+        $start = Carbon::parse($d['period_start'])->startOfDay();
+        $end = Carbon::parse($d['period_end'])->startOfDay();
+        if ($start->diffInDays($end) > 34) {
+            return $this->failure('A pay period cannot be longer than 5 weeks.', 422, ['period_end' => 'A pay period cannot be longer than 5 weeks.']);
+        }
+
+        $clash = PayRun::where('company_id', $b->company_id)->where('frequency', $d['frequency'])
+            ->whereDate('period_start', '<=', $end->toDateString())->whereDate('period_end', '>=', $start->toDateString())->first();
+        if ($clash) {
+            return $this->failure('There is already a ' . strtolower($d['frequency']) . ' pay run (' . $clash->reference . ') that overlaps these dates.', 422, ['period_start' => 'Overlaps ' . $clash->reference . '.']);
+        }
+
+        $people = Employee::where('emp_company_id', $b->company_id)->where('emp_status', 'Active')->get();
+        $jobs = EmploymentInformation::whereIn('employee_id', $people->pluck('emp_id'))->get()->keyBy('employee_id');
+        $included = $people->filter(function (Employee $e) use ($jobs, $d, $end) {
+            $j = $jobs->get($e->emp_id);
+            return $j && $j->pay_frequency === $d['frequency'] && $j->pay_basis
+                && (!$j->start_date || $j->start_date->startOfDay()->lte($end));
+        })->values();
+        if ($included->isEmpty()) {
+            return $this->failure('No current employees are paid ' . strtolower($d['frequency']) . ' yet. Add an employee on that schedule first.', 422);
+        }
+
+        $run = DB::transaction(function () use ($b, $d, $included, $jobs) {
+            $run = PayRun::create([
+                'company_id' => $b->company_id,
+                'reference' => $this->nextNumber('pay_runs', 'reference', (int) $b->company_id, 'PR'),
+                'frequency' => $d['frequency'],
+                'period_start' => $d['period_start'], 'period_end' => $d['period_end'], 'pay_date' => $d['pay_date'],
+                'status' => 'draft', 'created_by' => auth()->guard('api')->id(),
+            ]);
+            foreach ($included as $e) {
+                $j = $jobs->get($e->emp_id);
+                $fund = SuperannuationFund::where('employee_id', $e->emp_id)->first();
+                $line = new PayRunLine([
+                    'pay_run_id' => $run->id, 'employee_id' => $e->emp_id,
+                    'employee_name' => trim($e->emp_first_name . ' ' . $e->emp_last_name),
+                    'pay_basis' => $j->pay_basis, 'hourly_rate' => $j->hourly_rate, 'annual_salary' => $j->annual_salary,
+                    'hours' => $j->pay_basis === 'hourly' ? $this->defaultHours($j, $d['frequency']) : null,
+                    'super_fund_name' => $fund?->fund_name, 'super_member_number' => $fund?->member_number,
+                ]);
+                $this->calculate($line, $run->frequency);
+                $line->save();
+            }
+            $this->totals($run);
+            return $run;
+        });
+
+        return response()->json(['data' => $this->full($run->fresh(), $b)], 201);
+    }
+
+    public function updateLine(Request $request, int $id, int $lineId): JsonResponse
+    {
+        if (!$b = $this->business()) {
+            return $this->noBusiness();
+        }
+        [$run, $line] = $this->findLine($b->company_id, $id, $lineId);
+        if (!$run) {
+            return $this->failure('Pay run not found.', 404);
+        }
+        if ($run->status !== 'draft') {
+            return $this->failure('This pay run is finalised and can no longer be changed.', 422);
+        }
+        $v = Validator::make($request->all(), [
+            'hours' => ['nullable', 'numeric', 'min:0', 'max:744', $this->twoDecimals('Hours')],
+            'tax_override' => ['nullable', 'numeric', 'min:0', 'max:9999999.99', $this->twoDecimals('Tax')],
+            'clear_tax_override' => ['nullable', 'boolean'],
+            'confirm_tax' => ['nullable', 'boolean'],
+        ]);
+        if ($v->fails()) {
+            return $this->failure('Please fix the highlighted fields.', 422, $v->errors()->toArray());
+        }
+        $d = $v->validated();
+        if (array_key_exists('hours', $request->all())) {
+            if ($line->pay_basis !== 'hourly') {
+                return $this->failure('This employee is paid a salary, so there are no hours to enter.', 422);
+            }
+            $line->hours = $d['hours'] ?? null;
+            if (!$line->tax_overridden) {
+                $line->tax_confirmed = false; // the amount changed, so an earlier confirmation no longer applies
+            }
+        }
+        if (!empty($d['clear_tax_override'])) {
+            $line->tax_overridden = false;
+            $line->tax_confirmed = false;
+            $line->tax = 0;
+        } elseif (isset($d['tax_override'])) {
+            $line->tax_overridden = true;
+            $line->tax = $d['tax_override'];
+            $line->tax_confirmed = true;
+        }
+        if (!empty($d['confirm_tax'])) {
+            $line->tax_confirmed = true;
+        }
+        $this->calculate($line, $run->frequency);
+        $line->save();
+        $this->totals($run);
+        return response()->json(['data' => $this->full($run->fresh(), $b)]);
+    }
+
+    public function destroyLine(int $id, int $lineId): JsonResponse
+    {
+        if (!$b = $this->business()) {
+            return $this->noBusiness();
+        }
+        [$run, $line] = $this->findLine($b->company_id, $id, $lineId);
+        if (!$run) {
+            return $this->failure('Pay run not found.', 404);
+        }
+        if ($run->status !== 'draft') {
+            return $this->failure('This pay run is finalised and can no longer be changed.', 422);
+        }
+        $line->delete();
+        $this->totals($run);
+        return response()->json(['data' => $this->full($run->fresh(), $b)]);
+    }
+
+    public function finalise(int $id): JsonResponse
+    {
+        if (!$b = $this->business()) {
+            return $this->noBusiness();
+        }
+        return DB::transaction(function () use ($b, $id) {
+        $run = PayRun::where('company_id', $b->company_id)->where('id', $id)->lockForUpdate()->first();
+        if (!$run) {
+            return $this->failure('Pay run not found.', 404);
+        }
+        if ($run->status !== 'draft') {
+            return $this->failure('This pay run is already finalised.', 422);
+        }
+        $lines = PayRunLine::where('pay_run_id', $run->id)->get();
+        if ($lines->isEmpty() || $lines->sum('gross') <= 0) {
+            return $this->failure('There is nothing to pay in this run yet.', 422);
+        }
+        $problems = [];
+        foreach ($lines as $l) {
+            if ($l->pay_basis === 'hourly' && $l->hours === null) {
+                $problems[] = $l->employee_name . ': enter hours, or remove them from this run';
+            } elseif ($l->tax_status !== 'auto' && !$l->tax_confirmed) {
+                $problems[] = $l->employee_name . ': check and confirm the tax';
+            }
+        }
+        if ($problems) {
+            return $this->failure('Some lines need your attention before this can be finalised.', 422, ['lines' => implode('. ', $problems) . '.']);
+        }
+        $run->forceFill([
+            'status' => 'finalised', 'finalised_at' => now(),
+            'super_due_date' => $this->addBusinessDays(Carbon::parse($run->pay_date), 7)->toDateString(),
+        ])->save();
+        return response()->json(['data' => $this->full($run->fresh(), $b)]);
+        });
+    }
+
+    public function destroy(int $id): JsonResponse
+    {
+        if (!$b = $this->business()) {
+            return $this->noBusiness();
+        }
+        $run = PayRun::where('company_id', $b->company_id)->where('id', $id)->first();
+        if (!$run) {
+            return $this->failure('Pay run not found.', 404);
+        }
+        if ($run->status !== 'draft') {
+            return $this->failure('A finalised pay run is a payroll record and cannot be deleted.', 422);
+        }
+        DB::transaction(function () use ($run) {
+            PayRunLine::where('pay_run_id', $run->id)->delete();
+            $run->delete();
+        });
+        return response()->json(['message' => 'Draft pay run deleted.']);
+    }
+
+    // ------------------------------------------------------------ calculation
+
+    private function cents($v): int
+    {
+        return (int) round(((float) $v) * 100);
+    }
+
+    private function defaultHours(EmploymentInformation $j, string $freq): ?float
+    {
+        if ($j->hours_per_week === null) {
+            return null;
+        }
+        $h = $this->cents($j->hours_per_week); // hundredths of an hour a week
+        $period = match ($freq) {
+            Calc::WEEKLY => $h,
+            Calc::FORTNIGHTLY => $h * 2,
+            default => intdiv($h * 52 * 2 + 12, 24),   // x 52 / 12, half up
+        };
+        return $period / 100;
+    }
+
+    /** Works out gross, tax, super and net for a line, and says whether the tax needs a person's check. */
+    private function calculate(PayRunLine $l, string $freq): void
+    {
+        $grossC = 0;
+        if ($l->pay_basis === 'salary') {
+            $grossC = Calc::salaryForPeriodCents($this->cents($l->annual_salary), $freq);
+        } elseif ($l->hours !== null) {
+            $grossC = Calc::hourlyGrossCents($this->cents($l->hours), $this->cents($l->hourly_rate));
+        }
+
+        $tax = TaxDetail::where('employee_id', $l->employee_id)->first();
+        $hasTfn = $tax && !empty($tax->getRawOriginal('tax_file_number'));
+        $foreign = $tax && $tax->residency_status === 'Foreign resident';
+        $whm = $tax && $tax->tax_scale_type === 'Working holiday maker';
+        $loan = $tax && $tax->has_study_training_loans;
+
+        $scale = null; $status = 'auto'; $note = null;
+        if (!$hasTfn) {
+            $scale = Calc::SCALE_NO_TFN;
+            $note = 'No tax file number on record, so tax is withheld at the no-TFN rate.';
+        } elseif ($foreign || $whm) {
+            $status = 'manual_required';
+            $note = $whm ? 'Working holiday maker: enter the tax to withhold.' : 'Foreign resident: enter the tax to withhold.';
+        } else {
+            $scale = $tax->claim_tax_free_threshold ? Calc::SCALE_THRESHOLD : Calc::SCALE_NO_THRESHOLD;
+            if ($loan) {
+                $status = 'review';
+                $note = 'Study and training loan repayments are not included. Add them to the tax, then confirm.';
+            }
+        }
+
+        if ($l->tax_overridden) {
+            $taxC = $this->cents($l->tax);
+            $method = 'manual';
+        } else {
+            $taxC = $scale ? Calc::withholding($grossC, $freq, $scale, $foreign) : 0;
+            $method = $scale ?: 'manual';
+            if ($status === 'auto' || $grossC === 0) {
+                $l->tax_confirmed = $status === 'auto' ? false : $l->tax_confirmed;
+            }
+        }
+        $l->gross = $grossC / 100;
+        $l->tax = $taxC / 100;
+        $l->tax_method = $method;
+        $l->tax_status = $status;
+        $l->tax_note = $note;
+        $l->super_amount = Calc::superCents($grossC) / 100;
+        $l->net = ($grossC - $taxC) / 100;
+    }
+
+    private function totals(PayRun $run): void
+    {
+        $lines = PayRunLine::where('pay_run_id', $run->id)->get();
+        $run->forceFill([
+            'total_gross' => $this->cents($lines->sum('gross')) / 100,
+            'total_tax' => $this->cents($lines->sum('tax')) / 100,
+            'total_super' => $this->cents($lines->sum('super_amount')) / 100,
+            'total_net' => $this->cents($lines->sum('net')) / 100,
+        ])->save();
+    }
+
+    /** Super must reach the fund within 7 business days of payday. Public holidays are not counted here, so pay earlier if one falls in between. */
+    private function addBusinessDays(Carbon $date, int $days): Carbon
+    {
+        $d = $date->copy();
+        while ($days > 0) {
+            $d->addDay();
+            if (!$d->isWeekend()) {
+                $days--;
+            }
+        }
+        return $d;
+    }
+
+    private function findLine(int $companyId, int $id, int $lineId): array
+    {
+        $run = PayRun::where('company_id', $companyId)->where('id', $id)->first();
+        $line = $run ? PayRunLine::where('pay_run_id', $run->id)->where('id', $lineId)->first() : null;
+        return $line ? [$run, $line] : [null, null];
+    }
+
+    // ------------------------------------------------------------ output
+
+    private function row(PayRun $r, int $employees): array
+    {
+        return [
+            'id' => $r->id, 'reference' => $r->reference, 'frequency' => $r->frequency,
+            'period_start' => $r->period_start->toDateString(), 'period_end' => $r->period_end->toDateString(),
+            'pay_date' => $r->pay_date->toDateString(), 'status' => $r->status, 'employees' => $employees,
+            'total_gross' => $this->money($r->total_gross), 'total_tax' => $this->money($r->total_tax),
+            'total_super' => $this->money($r->total_super), 'total_net' => $this->money($r->total_net),
+        ];
+    }
+
+    private function full(PayRun $r, $business): array
+    {
+        $lines = PayRunLine::where('pay_run_id', $r->id)->orderBy('employee_name')->get();
+        $needs = $lines->filter(fn ($l) => ($l->pay_basis === 'hourly' && $l->hours === null) || ($l->tax_status !== 'auto' && !$l->tax_confirmed))->count();
+        $draft = $r->status === 'draft';
+
+        return $this->row($r, $lines->count()) + [
+            'super_due_date' => $r->super_due_date?->toDateString(),
+            'finalised_at' => $r->finalised_at?->toIso8601String(),
+            'employer' => $this->presentSeller($business),
+            'needs_attention' => $needs,
+            'can' => ['edit' => $draft, 'finalise' => $draft && $lines->count() > 0, 'delete' => $draft],
+            'lines' => $lines->map(fn (PayRunLine $l) => [
+                'id' => $l->id, 'employee_id' => $l->employee_id, 'employee_name' => $l->employee_name,
+                'pay_basis' => $l->pay_basis,
+                'hourly_rate' => $l->hourly_rate !== null ? (float) $l->hourly_rate : null,
+                'annual_salary' => $l->annual_salary !== null ? (float) $l->annual_salary : null,
+                'hours' => $l->hours !== null ? (float) $l->hours : null,
+                'gross' => $this->money($l->gross), 'tax' => $this->money($l->tax),
+                'super_amount' => $this->money($l->super_amount), 'net' => $this->money($l->net),
+                'tax_method' => $l->tax_method, 'tax_status' => $l->tax_status, 'tax_note' => $l->tax_note,
+                'tax_overridden' => (bool) $l->tax_overridden, 'tax_confirmed' => (bool) $l->tax_confirmed,
+                'super_fund_name' => $l->super_fund_name, 'super_member_number' => $l->super_member_number,
+            ])->values(),
+        ];
+    }
+}
