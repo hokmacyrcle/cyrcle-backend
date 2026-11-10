@@ -157,11 +157,11 @@ class CompanyController extends Controller
     public function index(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 15);
-        $query = \App\Models\Company::where('user_id', $request->user()->id);
+        $query = \App\Models\Company::with('locations')->where('user_id', $request->user()->id);
         if ($search = $request->query('search')) {
             $query->where('company_name', 'like', "%{$search}%");
         }
-        return response()->json($query->orderBy('company_id')->paginate($perPage));
+        return response()->json(['success' => true, 'data' => $query->orderBy('company_id')->paginate($perPage)]);
     }
 
     public function store(Request $request): JsonResponse
