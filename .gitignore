@@ -28,8 +28,6 @@ Homestead.json
 Thumbs.db
 desktop.ini
 
-# Composer & NPM lock files (optional, keep if you want reproducible builds)
-composer.lock
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
@@ -51,3 +49,6 @@ yarn-error.log
 
 .rnd
 /storage/storage/
+
+public/test.php
+public/hostinger-test.php
