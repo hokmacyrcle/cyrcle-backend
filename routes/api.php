@@ -91,7 +91,7 @@ Route::post('/forgot-password/reset', [App\Http\Controllers\Api\Auth\ForgotPassw
 
 
 
-Route::middleware(['auth:api', 'company.context'])->group(function () {
+Route::middleware(['auth:api', 'company.context', 'role.access'])->group(function () {
     // Simple test route to check if auth:api middleware is working
     Route::get('/auth-test', function (Request $request) {
         return response()->json([
@@ -231,6 +231,9 @@ Route::middleware(['auth:api', 'company.context'])->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
+
+    // Employee self-service (the only area employees can reach; see EnsureRoleAccess)
+    Route::get('/me', [App\Http\Controllers\Api\MeController::class, 'show']);
     
     // Company management routes
     Route::get('/user/company', [App\Http\Controllers\Api\CompanyController::class, 'getUserCompanies']);
