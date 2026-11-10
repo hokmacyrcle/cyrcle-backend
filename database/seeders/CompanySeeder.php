@@ -23,7 +23,7 @@ class CompanySeeder extends Seeder
                 'gst_registration_start_date' => '2020-01-01',
                 'company_registration_date' => '2019-06-15',
                 'company_type' => 'Subscriber',
-                'user_id' => 6,
+                'user_id' => 1,
             ],
             [
                 'company_name' => 'Global Innovations Ltd',
@@ -34,7 +34,7 @@ class CompanySeeder extends Seeder
                 'gst_registration_start_date' => '2018-03-01',
                 'company_registration_date' => '2017-11-20',
                 'company_type' => 'Subscriber',
-                'user_id' => 6,
+                'user_id' => 1,
             ],
             [
                 'company_name' => 'Digital Dynamics',
@@ -43,7 +43,7 @@ class CompanySeeder extends Seeder
                 'gst_registered' => false,
                 'company_registration_date' => '2021-02-10',
                 'company_type' => 'Client',
-                'user_id' => 6,
+                'user_id' => 1,
             ],
             [
                 'company_name' => 'Future Systems Inc',
@@ -54,7 +54,7 @@ class CompanySeeder extends Seeder
                 'gst_registration_start_date' => '2022-07-01',
                 'company_registration_date' => '2022-01-15',
                 'company_type' => 'Client',
-                'user_id' => 6,
+                'user_id' => 1,
             ],
             [
                 'company_name' => 'Smart Solutions Group',
@@ -65,7 +65,7 @@ class CompanySeeder extends Seeder
                 'gst_registration_start_date' => '2019-09-01',
                 'company_registration_date' => '2019-04-22',
                 'company_type' => 'Subscriber',
-                'user_id' => 6,
+                'user_id' => 1,
             ],
         ];
 
