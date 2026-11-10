@@ -266,9 +266,7 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
 
     // Company routes
     Route::apiResource('companies', App\Http\Controllers\Api\CompanyController::class);
-    Route::get('/companies/active/list', [App\Http\Controllers\Api\CompanyController::class, 'active']);
     Route::patch('/companies/{company}/toggle-status', [App\Http\Controllers\Api\CompanyController::class, 'toggleStatus']);
-    Route::get('/companies/{company}/audit-history', [App\Http\Controllers\Api\CompanyController::class, 'auditHistory']);
     
     // Company attachments removed - use CommonAttachmentService instead
     

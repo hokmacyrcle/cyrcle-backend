@@ -153,6 +153,7 @@ class AuthController extends Controller
         $companies = [];
         if ($user->id) {
             $companies = \App\Models\Company::where('user_id', $user->id)
+                ->where(function ($q) { $q->whereNull('status')->orWhere('status', '!=', 'archived'); })
                 ->select('company_id', 'company_name', 'company_type', 'company_abn', 'company_acn')
                 ->get();
         }
