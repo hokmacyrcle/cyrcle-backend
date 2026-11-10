@@ -31,7 +31,6 @@ desktop.ini
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
-*.json
 *.lock
 *.lock.json
 *.lock.yaml
