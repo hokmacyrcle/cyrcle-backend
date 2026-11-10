@@ -79,6 +79,7 @@ class AuthController extends Controller
             'phone' => $request->phone,
             'country_code' => $request->country_code,
             'password' => Hash::make($request->password),
+            'marketing_opt_in' => (bool) $request->marketing_opt_in,
         ]);
 
         $token = $user->createToken('AuthToken')->accessToken;
@@ -137,6 +138,8 @@ class AuthController extends Controller
                 'user' => $user,
                 'companies' => $companies,
                 'companies_count' => $companies->count(),
+                'firm_status' => \App\Models\Company::where('user_id', $user->id)->where('company_type', 'Subscriber')->value('status'),
+                'email_verified' => (bool) $user->email_verified_at,
                 'access_token' => $token,
                 'token_type' => 'Bearer',
             ]

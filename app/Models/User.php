@@ -30,6 +30,7 @@ class User extends Authenticatable
         'role',
         'employee_id',
         'password',
+        'marketing_opt_in',
     ];
 
     /**

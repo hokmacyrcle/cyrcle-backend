@@ -30,6 +30,13 @@ use App\Http\Controllers\Api\CompanyController;
 Route::post('/register', [App\Http\Controllers\Api\Auth\AuthController::class, 'register']);
 Route::post('/login', [App\Http\Controllers\Api\Auth\AuthController::class, 'login']);
 
+// Firm sign-up steps 2-4 (token from /register; no company context needed yet)
+Route::middleware('auth:api')->group(function () {
+    Route::post('/email/send-code', [App\Http\Controllers\Api\Auth\FirmSignupController::class, 'sendCode'])->middleware('throttle:5,1');
+    Route::post('/email/verify', [App\Http\Controllers\Api\Auth\FirmSignupController::class, 'verifyCode'])->middleware('throttle:10,1');
+    Route::post('/firm/register', [App\Http\Controllers\Api\Auth\FirmSignupController::class, 'registerFirm']);
+});
+
 // Test routes for debugging Hostinger issues
 Route::get('/test-auth', function () {
     return response()->json([

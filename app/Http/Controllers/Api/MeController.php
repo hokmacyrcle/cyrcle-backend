@@ -31,6 +31,9 @@ class MeController extends Controller
                 'user' => $user,
                 'role' => $user->role ?? 'employer',
                 'employee' => $employee,
+                'email_verified' => (bool) $user->email_verified_at,
+                'firm_status' => \App\Models\Company::where('user_id', $user->id)
+                    ->where('company_type', 'Subscriber')->value('status'),
             ],
         ]);
     }

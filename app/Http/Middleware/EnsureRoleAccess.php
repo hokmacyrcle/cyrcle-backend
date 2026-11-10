@@ -38,6 +38,19 @@ class EnsureRoleAccess
         $role = $user->role ?? 'employer';
 
         if ($role === 'employer') {
+            // A firm that is still pending review (or was rejected) can only reach /me and logout.
+            $blocked = \App\Models\Company::where('user_id', $user->id)
+                ->where('company_type', 'Subscriber')
+                ->whereIn('status', ['pending', 'rejected', 'suspended'])
+                ->value('status');
+            if ($blocked && !$request->is('api/me', 'api/me/*', 'api/logout', 'api/user')) {
+                return response()->json([
+                    'status' => false,
+                    'status_code' => 403,
+                    'message' => 'Your firm is not active yet',
+                    'firm_status' => $blocked,
+                ], 403);
+            }
             return $next($request);
         }
 
