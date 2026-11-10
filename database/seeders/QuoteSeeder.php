@@ -53,8 +53,8 @@ class QuoteSeeder extends Seeder
             $status = $statuses[array_rand($statuses)];
             
             // Debug output
-            $this->command->info("Quote $i - Company ID: " . ($company ? $company->id : 'NULL') . 
-                                ", Contact ID: " . ($contact ? $contact->id : 'NULL') . 
+            $this->command->info("Quote $i - Company ID: " . ($company ? $company->company_id : 'NULL') . 
+                                ", Contact ID: " . ($contact ? $contact->contact_id : 'NULL') . 
                                 ", Payment Term ID: " . ($paymentTerm ? $paymentTerm->id : 'NULL'));
             
             // Ensure we have valid IDs
@@ -64,8 +64,8 @@ class QuoteSeeder extends Seeder
             }
             
             $quote = Quote::create([
-                'company_id' => $company->id,
-                'contact_id' => $contact->id,
+                'company_id' => $company->company_id,
+                'contact_id' => $contact->contact_id,
                 'payment_term_id' => $paymentTerm->id,
                 'quote_number' => (1000 + $i),
                 'quote_date' => now()->subDays(rand(1, 365)),
