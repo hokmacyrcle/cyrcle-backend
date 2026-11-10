@@ -306,32 +306,43 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
         Route::get('/{id}/attachments', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'getAttachments']);
     });
 
-    // Invoice CRUD routes
-    Route::apiResource('invoices', App\Http\Controllers\Api\InvoiceController::class);
+    // Sales (Australian invoicing): the screens in Sales use these. Everything is limited to the selected business.
+    Route::prefix('sales')->group(function () {
+        Route::get('/summary', [App\Http\Controllers\Api\Sales\SummaryController::class, 'show']);
+        Route::get('/business', [App\Http\Controllers\Api\Sales\SummaryController::class, 'businessInfo']);
+
+        Route::get('/invoices', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'index']);
+        Route::post('/invoices', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'store']);
+        Route::get('/invoices/{id}', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'show'])->whereNumber('id');
+        Route::put('/invoices/{id}', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'update'])->whereNumber('id');
+        Route::delete('/invoices/{id}', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'destroy'])->whereNumber('id');
+        Route::post('/invoices/{id}/issue', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'issue'])->whereNumber('id');
+        Route::post('/invoices/{id}/void', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'void'])->whereNumber('id');
+        Route::post('/invoices/{id}/payments', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'addPayment'])->whereNumber('id');
+        Route::delete('/invoices/{id}/payments/{transactionId}', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'removePayment'])->whereNumber('id')->whereNumber('transactionId');
+
+        Route::get('/quotes', [App\Http\Controllers\Api\Sales\QuoteController::class, 'index']);
+        Route::post('/quotes', [App\Http\Controllers\Api\Sales\QuoteController::class, 'store']);
+        Route::get('/quotes/{id}', [App\Http\Controllers\Api\Sales\QuoteController::class, 'show'])->whereNumber('id');
+        Route::put('/quotes/{id}', [App\Http\Controllers\Api\Sales\QuoteController::class, 'update'])->whereNumber('id');
+        Route::delete('/quotes/{id}', [App\Http\Controllers\Api\Sales\QuoteController::class, 'destroy'])->whereNumber('id');
+        Route::post('/quotes/{id}/status', [App\Http\Controllers\Api\Sales\QuoteController::class, 'setStatus'])->whereNumber('id');
+        Route::post('/quotes/{id}/convert', [App\Http\Controllers\Api\Sales\QuoteController::class, 'convert'])->whereNumber('id');
+
+        Route::get('/customers', [App\Http\Controllers\Api\Sales\CustomerController::class, 'index']);
+        Route::post('/customers', [App\Http\Controllers\Api\Sales\CustomerController::class, 'store']);
+        Route::get('/customers/{id}', [App\Http\Controllers\Api\Sales\CustomerController::class, 'show'])->whereNumber('id');
+        Route::put('/customers/{id}', [App\Http\Controllers\Api\Sales\CustomerController::class, 'update'])->whereNumber('id');
+        Route::post('/customers/{id}/archive', [App\Http\Controllers\Api\Sales\CustomerController::class, 'setArchived'])->whereNumber('id');
+    });
+
+    // Older invoice routes (the old Sales screens). The Sales screens now use /sales/... above.
+    // Only the routes that already limit data to the selected business are kept; the rest were removed because
+    // they could read or change another business's invoices by id (dashboard, overdue, by-status, items,
+    // transactions, attachments, discount, tax, summary, PDF export).
     Route::get('/invoices/statistics', [App\Http\Controllers\Api\InvoiceController::class, 'statistics']);
-    Route::get('/invoices/dashboard', [App\Http\Controllers\Api\InvoiceController::class, 'dashboard']);
     Route::get('/invoices/form-data', [App\Http\Controllers\Api\InvoiceController::class, 'getFormData']);
-    
-    // invoice routes with items and transactions
-    Route::get('/invoices/{invoice}/items', [App\Http\Controllers\Api\InvoiceController::class, 'getInvoiceItems']);
-    Route::get('/invoices/{invoice}/transactions', [App\Http\Controllers\Api\InvoiceController::class, 'getInvoiceTransactions']);
-    Route::post('/invoices/{invoice}/transactions', [App\Http\Controllers\Api\InvoiceController::class, 'addTransaction']);
-    Route::get('/invoices/status/{status}', [App\Http\Controllers\Api\InvoiceController::class, 'getInvoicesByStatus']);
-    
-    Route::get('/invoices/overdue', [App\Http\Controllers\Api\InvoiceController::class, 'getOverdueInvoices']);
-    
-    // Invoice PDF export
-    Route::get('/invoices/export/pdf', [App\Http\Controllers\Api\InvoiceController::class, 'exportToPdf']);
-    
-    // Invoice attachments
-    Route::post('/invoices/{invoiceId}/attachments', [App\Http\Controllers\Api\InvoiceController::class, 'uploadAttachments']);
-    Route::get('/invoices/{invoiceId}/attachments', [App\Http\Controllers\Api\InvoiceController::class, 'getAttachments']);
-    Route::delete('/invoices/{invoiceId}/attachments', [App\Http\Controllers\Api\InvoiceController::class, 'deleteAttachment']);
-    
-    // Discount and tax management routes
-    Route::put('/invoices/{invoice}/discount', [App\Http\Controllers\Api\InvoiceController::class, 'updateDiscount']);
-    Route::put('/invoices/{invoice}/tax', [App\Http\Controllers\Api\InvoiceController::class, 'updateTax']);
-    Route::get('/invoices/{invoice}/summary', [App\Http\Controllers\Api\InvoiceController::class, 'getInvoiceSummary']);
+    Route::apiResource('invoices', App\Http\Controllers\Api\InvoiceController::class);
 
     // Tax rates management
     Route::apiResource('tax-rates', App\Http\Controllers\Api\TaxRateController::class);

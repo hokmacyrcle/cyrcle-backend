@@ -20,10 +20,12 @@ class QuoteItem extends Model
         'rate',
         'amount',
         'gst',
+        'gst_rate',
     ];
 
     protected $casts = [
-        'quantity' => 'integer',
+        'quantity' => 'decimal:2',
+        'gst_rate' => 'decimal:2',
         'rate' => 'decimal:2',
         'amount' => 'decimal:2',
         'gst' => 'decimal:2',

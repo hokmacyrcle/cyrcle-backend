@@ -187,8 +187,23 @@ class CompanyController extends Controller
             'suburb' => $c->suburb,
             'state' => $c->state,
             'postcode' => $c->postcode,
+            'bank_account_name' => $c->bank_account_name,
+            'bank_bsb' => $c->bank_bsb,
+            'bank_account_number' => $c->bank_account_number,
             'status' => $c->status ?? 'active',
             'created_at' => optional($c->created_at)->toDateTimeString(),
+        ];
+    }
+
+
+    /** Where customers pay: shown on invoices. BSB is stored as 123-456. */
+    private function bankFields(Request $request): array
+    {
+        $bsb = preg_replace('/\D/', '', (string) $request->bank_bsb);
+        return [
+            'bank_account_name' => $request->bank_account_name ?: null,
+            'bank_bsb' => strlen($bsb) === 6 ? substr($bsb, 0, 3) . '-' . substr($bsb, 3) : null,
+            'bank_account_number' => $request->bank_account_number ?: null,
         ];
     }
 
@@ -206,9 +221,12 @@ class CompanyController extends Controller
     {
         return [
             'company_name' => ['required', 'string', 'max:255'],
-            'company_abn' => ['nullable', new ValidAbn],
+            'company_abn' => ['nullable', 'required_if:gst_registered,true,1', new ValidAbn],
             'company_acn' => ['nullable', 'regex:/^\d{9}$/'],
             'gst_registered' => ['boolean'],
+            'bank_account_name' => ['nullable', 'string', 'max:100'],
+            'bank_bsb' => ['nullable', 'regex:/^\d{3}-?\d{3}$/'],
+            'bank_account_number' => ['nullable', 'regex:/^\d{6,9}$/'],
             'address_line' => ['required', 'string', 'max:255'],
             'suburb' => ['required', 'string', 'max:100'],
             'state' => ['required', 'in:NSW,VIC,QLD,WA,SA,TAS,ACT,NT'],
@@ -250,6 +268,9 @@ class CompanyController extends Controller
         $v = Validator::make($request->all(), $this->rules(), [
             'company_acn.regex' => 'ACN must be 9 digits.',
             'postcode.digits' => 'Postcode must be 4 digits.',
+            'company_abn.required_if' => 'A GST-registered business needs an ABN.',
+            'bank_bsb.regex' => 'BSB must be 6 digits, like 062-000.',
+            'bank_account_number.regex' => 'Account number must be 6 to 9 digits.',
         ]);
         if ($v->fails()) {
             return $this->fail(400, 'Validation failed', $v->errors());
@@ -274,7 +295,7 @@ class CompanyController extends Controller
             'suburb' => $request->suburb,
             'state' => $request->state,
             'postcode' => $request->postcode,
-        ])->save();
+        ] + $this->bankFields($request))->save();
 
         return $this->ok('Client business added', ['company' => $this->present($c)], 201);
     }
@@ -289,6 +310,9 @@ class CompanyController extends Controller
         $v = Validator::make($request->all(), $this->rules(), [
             'company_acn.regex' => 'ACN must be 9 digits.',
             'postcode.digits' => 'Postcode must be 4 digits.',
+            'company_abn.required_if' => 'A GST-registered business needs an ABN.',
+            'bank_bsb.regex' => 'BSB must be 6 digits, like 062-000.',
+            'bank_account_number.regex' => 'Account number must be 6 to 9 digits.',
         ]);
         if ($v->fails()) {
             return $this->fail(400, 'Validation failed', $v->errors());
@@ -306,7 +330,7 @@ class CompanyController extends Controller
             'suburb' => $request->suburb,
             'state' => $request->state,
             'postcode' => $request->postcode,
-        ])->save();
+        ] + $this->bankFields($request))->save();
 
         return $this->ok('Client business updated', ['company' => $this->present($c)]);
     }

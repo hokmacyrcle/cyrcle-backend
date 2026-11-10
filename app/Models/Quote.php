@@ -30,6 +30,9 @@ class Quote extends Model
         'notes',
         'terms',
         'attachments',
+        'reference',
+        'amounts_are',
+        'invoice_id',
     ];
 
     protected $casts = [

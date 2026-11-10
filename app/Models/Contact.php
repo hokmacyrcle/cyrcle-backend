@@ -37,6 +37,7 @@ class Contact extends Model
         'contact_status',
         'subscriber_client',
         'subscriber_id',
+        'contact_abn',
     ];
 
     /**
