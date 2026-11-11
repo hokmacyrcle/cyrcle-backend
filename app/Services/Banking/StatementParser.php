@@ -117,8 +117,8 @@ class StatementParser
                 if ($map['date'] === null && str_contains($h, 'date')) $map['date'] = $i;
                 elseif ($map['description'] === null && preg_match('/desc|narrat|detail|particular|memo|payee|reference/', $h)) $map['description'] = $i;
                 elseif ($map['balance'] === null && str_contains($h, 'balance')) $map['balance'] = $i;
-                elseif ($map['debit'] === null && preg_match('/debit|withdraw|money out|paid out/', $h)) $map['debit'] = $i;
-                elseif ($map['credit'] === null && preg_match('/credit|deposit|money in|paid in/', $h)) $map['credit'] = $i;
+                elseif ($map['debit'] === null && preg_match('/debit|withdraw|money out|paid out|spent/', $h)) $map['debit'] = $i;
+                elseif ($map['credit'] === null && preg_match('/credit|deposit|money in|paid in|received/', $h)) $map['credit'] = $i;
                 elseif ($map['amount'] === null && str_contains($h, 'amount')) $map['amount'] = $i;
             }
         } else {

@@ -37,23 +37,19 @@ class BankTransactionController extends Controller
         return $this->listing($request, $request->query('account'));
     }
 
-    private function listing(Request $request, $accountId): JsonResponse
+    /** The lines of this business, narrowed by account, status, search text, dates and money in/out. */
+    private function filtered(Request $request, $companyId, $accountId)
     {
-        if (!$b = $this->business()) {
-            return $this->noBusiness();
-        }
-        $base = BankTransaction::where('company_id', $b->company_id);
+        $q = BankTransaction::where('company_id', $companyId);
         if ($accountId !== null && $accountId !== '') {
-            $acct = BusinessBankAccount::where('company_id', $b->company_id)->find($accountId);
-            if (!$acct) {
-                return $this->failure('Account not found.', 404);
-            }
-            $base->where('bank_account_id', $acct->id);
+            $q->where('bank_account_id', (int) $accountId);
         }
-        $status = in_array($request->query('status'), ['review', 'done', 'excluded'], true) ? $request->query('status') : 'review';
-        $counts = (clone $base)->selectRaw('status, COUNT(*) as n')->groupBy('status')->pluck('n', 'status');
+        return $q;
+    }
 
-        $q = (clone $base)->where('status', $status);
+    private function narrow($q, Request $request, string $status)
+    {
+        $q->where('status', $status);
         if ($s = trim((string) $request->query('search', ''))) {
             $q->where('description', 'like', '%' . $s . '%');
         }
@@ -68,6 +64,23 @@ class BankTransactionController extends Controller
         } elseif ($request->query('type') === 'out') {
             $q->where('amount', '<', 0);
         }
+        return $q;
+    }
+
+    private function listing(Request $request, $accountId): JsonResponse
+    {
+        if (!$b = $this->business()) {
+            return $this->noBusiness();
+        }
+        if ($accountId !== null && $accountId !== ''
+            && !BusinessBankAccount::where('company_id', $b->company_id)->find($accountId)) {
+            return $this->failure('Account not found.', 404);
+        }
+        $base = $this->filtered($request, $b->company_id, $accountId);
+        $status = in_array($request->query('status'), ['review', 'done', 'excluded'], true) ? $request->query('status') : 'review';
+        $counts = (clone $base)->selectRaw('status, COUNT(*) as n')->groupBy('status')->pluck('n', 'status');
+
+        $q = $this->narrow(clone $base, $request, $status);
         $page = $q->orderByDesc('txn_date')->orderByDesc('id')->paginate(min(max((int) $request->query('per_page', 25), 1), 100));
         $names = BusinessBankAccount::where('company_id', $b->company_id)->pluck('name', 'id');
 
@@ -76,6 +89,44 @@ class BankTransactionController extends Controller
             'counts' => ['review' => (int) ($counts['review'] ?? 0), 'done' => (int) ($counts['done'] ?? 0), 'excluded' => (int) ($counts['excluded'] ?? 0)],
             'meta' => ['page' => $page->currentPage(), 'per_page' => $page->perPage(), 'total' => $page->total(), 'last_page' => $page->lastPage()],
         ]);
+    }
+
+    /** Download what the table is showing (same account, tab and filters) as a CSV file that opens in Excel. */
+    public function export(Request $request)
+    {
+        if (!$b = $this->business()) {
+            return $this->noBusiness();
+        }
+        $accountId = $request->query('account');
+        if ($accountId !== null && $accountId !== ''
+            && !BusinessBankAccount::where('company_id', $b->company_id)->find($accountId)) {
+            return $this->failure('Account not found.', 404);
+        }
+        $status = in_array($request->query('status'), ['review', 'done', 'excluded'], true) ? $request->query('status') : 'review';
+        $q = $this->narrow($this->filtered($request, $b->company_id, $accountId), $request, $status)->orderByDesc('txn_date')->orderByDesc('id');
+        $names = BusinessBankAccount::where('company_id', $b->company_id)->pluck('name', 'id');
+        $labels = ['review' => 'For review', 'done' => 'Done', 'excluded' => 'Excluded'];
+        // A cell that starts with = + - or @ can run as a formula when opened in Excel, so it is marked as plain text.
+        $safe = fn ($v) => preg_match('/^[=+\-@\t\r]/', (string) $v) ? "'" . $v : (string) $v;
+
+        $file = 'cyrcle-bank-transactions-' . \Carbon\Carbon::now('Australia/Sydney')->toDateString() . '.csv';
+        return response()->streamDownload(function () use ($q, $names, $labels, $safe) {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF");
+            fputcsv($out, ['Date', 'Description', 'Account', 'Money out', 'Money in', 'Amount', 'Balance', 'Status']);
+            $q->chunk(1000, function ($rows) use ($out, $names, $labels, $safe) {
+                foreach ($rows as $t) {
+                    $amt = (float) $t->amount;
+                    fputcsv($out, [
+                        $t->txn_date->format('d/m/Y'), $safe($t->description), $safe($names[$t->bank_account_id] ?? ''),
+                        $amt < 0 ? number_format(-$amt, 2, '.', '') : '', $amt > 0 ? number_format($amt, 2, '.', '') : '',
+                        number_format($amt, 2, '.', ''), $t->balance_after === null ? '' : number_format((float) $t->balance_after, 2, '.', ''),
+                        $labels[$t->status] ?? $t->status,
+                    ]);
+                }
+            });
+            fclose($out);
+        }, $file, ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
     /** Numbers for the Banking overview: what needs review and what moved in the last 30 days. */
