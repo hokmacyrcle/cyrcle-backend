@@ -270,6 +270,7 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
     });
 
     Route::prefix('sales')->group(function () {
+        Route::get('/firm/overdue', [App\Http\Controllers\Api\Sales\FirmOverdueController::class, 'show']);
         Route::get('/summary', [App\Http\Controllers\Api\Sales\SummaryController::class, 'show']);
         Route::get('/business', [App\Http\Controllers\Api\Sales\SummaryController::class, 'businessInfo']);
 
