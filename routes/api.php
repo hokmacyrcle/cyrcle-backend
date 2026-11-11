@@ -314,6 +314,7 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
         Route::get('/employees/{id}', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'show'])->whereNumber('id');
         Route::put('/employees/{id}', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'update'])->whereNumber('id');
         Route::post('/employees/{id}/archive', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'setArchived'])->whereNumber('id');
+        Route::post('/calculator', [App\Http\Controllers\Api\Payroll\PayCalculatorController::class, 'calculate']);
         Route::get('/pay-runs', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'index']);
         Route::post('/pay-runs', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'store']);
         Route::get('/pay-runs/{id}', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'show'])->whereNumber('id');
