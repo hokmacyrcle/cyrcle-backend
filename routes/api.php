@@ -252,6 +252,7 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
         Route::put('/timesheets/{employeeId}', [App\Http\Controllers\Api\Payroll\TimesheetController::class, 'save'])->whereNumber('employeeId');
         Route::post('/timesheets/{employeeId}/approve', [App\Http\Controllers\Api\Payroll\TimesheetController::class, 'approve'])->whereNumber('employeeId');
         Route::post('/pay-runs/{id}/refresh-hours', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'refreshHours'])->whereNumber('id');
+        Route::get('/pay-runs/{id}/stp', [App\Http\Controllers\Api\Payroll\StpController::class, 'show'])->whereNumber('id');
         Route::get('/overview', [App\Http\Controllers\Api\Payroll\PayrollOverviewController::class, 'show']);
         Route::post('/pay-runs/{id}/super-paid', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'superPaid'])->whereNumber('id');
         Route::get('/settings', [App\Http\Controllers\Api\Payroll\PayrollSettingsController::class, 'show']);
