@@ -32,6 +32,7 @@ class PayrollSettingsController extends Controller
             'super_rate' => ['required', 'numeric', 'min:' . $min, 'max:30', $this->twoDecimals('Super rate')],
             'default_pay_frequency' => ['required', Rule::in(['Weekly', 'Fortnightly', 'Monthly'])],
             'default_hours_per_week' => ['required', 'numeric', 'min:0.01', 'max:168', $this->twoDecimals('Hours')],
+            'casual_loading' => ['required', 'numeric', 'min:0', 'max:100', $this->twoDecimals('Casual loading')],
         ], [
             'super_rate.required' => 'Enter the super rate.',
             'super_rate.numeric' => 'Enter the super rate as a number, for example 12.',
@@ -41,6 +42,10 @@ class PayrollSettingsController extends Controller
             'default_hours_per_week.required' => 'Enter the usual hours per week.',
             'default_hours_per_week.min' => 'Enter hours greater than 0.',
             'default_hours_per_week.max' => 'A week has 168 hours.',
+            'casual_loading.required' => 'Enter the casual loading. Enter 0 if your casual hourly rates already include it.',
+            'casual_loading.numeric' => 'Enter the casual loading as a number, for example 25.',
+            'casual_loading.min' => 'The casual loading cannot be below 0.',
+            'casual_loading.max' => 'The casual loading cannot be more than 100.',
         ]);
         if ($v->fails()) {
             return $this->failure('Please fix the highlighted fields.', 422, $v->errors()->toArray());

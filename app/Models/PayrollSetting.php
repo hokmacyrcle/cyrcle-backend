@@ -8,16 +8,16 @@ use Illuminate\Database\Eloquent\Model;
 class PayrollSetting extends Model
 {
     public const MIN_SUPER_RATE = 12.00;   // the super guarantee: employers cannot pay less
-    public const DEFAULTS = ['super_rate' => 12.00, 'default_pay_frequency' => 'Fortnightly', 'default_hours_per_week' => 38.00];
+    public const DEFAULTS = ['super_rate' => 12.00, 'default_pay_frequency' => 'Fortnightly', 'default_hours_per_week' => 38.00, 'casual_loading' => 25.00];
 
     protected $guarded = [];
-    protected $casts = ['super_rate' => 'float', 'default_hours_per_week' => 'float'];
+    protected $casts = ['super_rate' => 'float', 'default_hours_per_week' => 'float', 'casual_loading' => 'float'];
 
     public static function forCompany(int $companyId): array
     {
         $row = static::where('company_id', $companyId)->first();
         return $row
-            ? ['super_rate' => (float) $row->super_rate, 'default_pay_frequency' => $row->default_pay_frequency, 'default_hours_per_week' => (float) $row->default_hours_per_week]
+            ? ['super_rate' => (float) $row->super_rate, 'default_pay_frequency' => $row->default_pay_frequency, 'default_hours_per_week' => (float) $row->default_hours_per_week, 'casual_loading' => (float) ($row->casual_loading ?? 25)]
             : self::DEFAULTS;
     }
 

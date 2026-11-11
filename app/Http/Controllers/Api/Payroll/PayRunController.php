@@ -115,6 +115,7 @@ class PayRunController extends Controller
                 'period_start' => $d['period_start'], 'period_end' => $d['period_end'], 'pay_date' => $d['pay_date'],
                 'status' => 'draft', 'super_rate' => PayrollSetting::forCompany((int) $b->company_id)['super_rate'], 'created_by' => auth()->guard('api')->id(),
             ]);
+            $casualLoading = PayrollSetting::forCompany((int) $b->company_id)['casual_loading'];
             foreach ($included as $e) {
                 $j = $jobs->get($e->emp_id);
                 $fund = SuperannuationFund::where('employee_id', $e->emp_id)->first();
@@ -123,6 +124,7 @@ class PayRunController extends Controller
                     'employee_name' => trim($e->emp_first_name . ' ' . $e->emp_last_name),
                     'pay_basis' => $j->pay_basis, 'hourly_rate' => $j->hourly_rate, 'annual_salary' => $j->annual_salary,
                     'hours' => null,
+                    'loading_rate' => $j->pay_basis === 'hourly' && LeaveService::isCasual($j) ? $casualLoading : 0,
                     'super_fund_name' => $fund?->fund_name, 'super_member_number' => $fund?->member_number,
                 ]);
                 if ($j->pay_basis === 'hourly') {
@@ -532,7 +534,13 @@ class PayRunController extends Controller
                 $dedC += $a;
             }
         }
-        $grossC = $baseC + $earnC;
+        // Casual loading is paid on ordinary hours only. It is taxed and earns super like ordinary pay.
+        $loadC = 0;
+        if ($l->pay_basis === 'hourly' && (float) $l->loading_rate > 0) {
+            $r = (int) round(((float) $l->loading_rate) * 100);   // hundredths of a percent
+            $loadC = intdiv($baseC * $r * 2 + 10000, 20000);       // half up
+        }
+        $grossC = $baseC + $loadC + $earnC;
         $loanC = 0;
 
         $tax = TaxDetail::where('employee_id', $l->employee_id)->first();
@@ -571,6 +579,7 @@ class PayRunController extends Controller
             }
         }
         $l->base_pay = $baseC / 100;
+        $l->casual_loading = $loadC / 100;
         $l->reimbursements = $reimbC / 100;
         $l->deductions = $dedC / 100;
         $l->gross = $grossC / 100;
@@ -580,7 +589,7 @@ class PayRunController extends Controller
         $l->tax_method = $method;
         $l->tax_status = $status;
         $l->tax_note = $note;
-        $l->super_amount = Calc::superCents($baseC + $superEarnC, $rateHundredths) / 100;
+        $l->super_amount = Calc::superCents($baseC + $loadC + $superEarnC, $rateHundredths) / 100;
         $l->net = ($grossC - $taxC + $reimbC - $dedC) / 100;
     }
 
@@ -675,6 +684,7 @@ class PayRunController extends Controller
                 'tax_overridden' => (bool) $l->tax_overridden, 'tax_confirmed' => (bool) $l->tax_confirmed,
                 'super_fund_name' => $l->super_fund_name, 'super_member_number' => $l->super_member_number,
                 'payslip_note' => $l->payslip_note,
+                'loading_rate' => (float) $l->loading_rate, 'casual_loading' => $this->money($l->casual_loading),
                 'ytd' => $ytd[$l->employee_id] ?? null,
                 'entitlements' => $entitled[$l->employee_id] ?? [],
                 'leave_taken' => $taken[$l->employee_id] ?? [],
@@ -697,16 +707,16 @@ class PayRunController extends Controller
             ->where(function ($q) use ($r) {
                 $q->whereDate('x.pay_date', '<', $r->pay_date->toDateString())
                   ->orWhere(fn ($q2) => $q2->whereDate('x.pay_date', $r->pay_date->toDateString())->where('x.id', '<=', $r->id));
-            })->get(['l.id', 'l.employee_id', 'l.gross', 'l.tax', 'l.super_amount', 'l.net', 'l.base_pay', 'l.study_loan']);
+            })->get(['l.id', 'l.employee_id', 'l.gross', 'l.tax', 'l.super_amount', 'l.net', 'l.base_pay', 'l.study_loan', 'l.casual_loading']);
         $items = PayRunLineItem::whereIn('pay_run_line_id', $rows->pluck('id'))->get()->groupBy('pay_run_line_id');
         $kinds = ['allowance', 'bonus', 'overtime', 'leave', 'reimbursement', 'deduction'];
         $out = [];
         foreach ($rows as $x) {
             $o = &$out[$x->employee_id];
-            $o ??= ['gross' => 0, 'tax' => 0, 'super' => 0, 'net' => 0, 'base_pay' => 0, 'study_loan' => 0, 'items' => array_fill_keys($kinds, 0)];
+            $o ??= ['gross' => 0, 'tax' => 0, 'super' => 0, 'net' => 0, 'base_pay' => 0, 'study_loan' => 0, 'loading' => 0, 'items' => array_fill_keys($kinds, 0)];
             $o['gross'] += $this->cents($x->gross); $o['tax'] += $this->cents($x->tax);
             $o['super'] += $this->cents($x->super_amount); $o['net'] += $this->cents($x->net);
-            $o['base_pay'] += $this->cents($x->base_pay); $o['study_loan'] += $this->cents($x->study_loan);
+            $o['base_pay'] += $this->cents($x->base_pay); $o['study_loan'] += $this->cents($x->study_loan); $o['loading'] += $this->cents($x->casual_loading);
             foreach ($items->get($x->id) ?? [] as $it) {
                 $o['items'][$it->kind] += $this->cents($it->amount);
             }
