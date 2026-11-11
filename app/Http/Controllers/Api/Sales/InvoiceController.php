@@ -152,6 +152,7 @@ class InvoiceController extends Controller
         $today = now()->toDateString();
         $status = $this->statusOf($i, $today);
         $hasPayments = $i->transactions->count() > 0;
+        $lastReminder = \App\Models\InvoiceReminder::where('invoice_id', $i->invoice_id)->max('created_at');
         $mode = $i->amounts_are ?: 'exclusive';
         $isTax = $b->gst_registered && $mode !== 'no_gst';
 
@@ -173,6 +174,7 @@ class InvoiceController extends Controller
             'number' => $i->invoice_number ?: ('#' . $i->invoice_id),
             'status' => $status,
             'recurring' => (bool) $i->recurring_invoice_id,
+            'last_reminder' => $lastReminder ? substr((string) $lastReminder, 0, 10) : null,
             'reference' => $i->reference,
             'issue_date' => optional($i->invoice_date)->toDateString(),
             'due_date' => optional($i->invoice_due_date)->toDateString(),
@@ -207,6 +209,7 @@ class InvoiceController extends Controller
                 'issue' => $status === 'draft',
                 'void' => in_array($status, ['awaiting', 'overdue'], true) && !$hasPayments,
                 'pay' => in_array($status, ['awaiting', 'overdue'], true),
+                'remind' => $status === 'overdue',
             ],
         ];
     }

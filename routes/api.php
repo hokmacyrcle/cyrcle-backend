@@ -278,6 +278,8 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
         Route::get('/invoices/{id}', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'show'])->whereNumber('id');
         Route::put('/invoices/{id}', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'update'])->whereNumber('id');
         Route::delete('/invoices/{id}', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'destroy'])->whereNumber('id');
+        Route::get('/invoices/{id}/reminder', [App\Http\Controllers\Api\Sales\InvoiceReminderController::class, 'show'])->whereNumber('id');
+        Route::post('/invoices/{id}/reminders', [App\Http\Controllers\Api\Sales\InvoiceReminderController::class, 'store'])->whereNumber('id');
         Route::post('/invoices/{id}/issue', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'issue'])->whereNumber('id');
         Route::post('/invoices/{id}/void', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'void'])->whereNumber('id');
         Route::post('/invoices/{id}/payments', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'addPayment'])->whereNumber('id');
