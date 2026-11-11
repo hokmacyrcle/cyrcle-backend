@@ -66,7 +66,7 @@ class PayrollOverviewController extends Controller
         $needs = [];
         if ($drafts->isNotEmpty()) {
             foreach (PayRunLine::whereIn('pay_run_id', $drafts->pluck('id'))->get() as $l) {
-                if (($l->pay_basis === 'hourly' && $l->hours === null) || ($l->tax_status !== 'auto' && !$l->tax_confirmed)) {
+                if ($l->needsAttention()) {
                     $needs[$l->pay_run_id] = ($needs[$l->pay_run_id] ?? 0) + 1;
                 }
             }

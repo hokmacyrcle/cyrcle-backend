@@ -12,6 +12,7 @@ use App\Models\PayrollSetting;
 use App\Models\SuperannuationFund;
 use App\Models\TaxDetail;
 use App\Services\Payroll\PayCalculator as Calc;
+use App\Services\Payroll\TimesheetHours;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -116,9 +117,12 @@ class PayRunController extends Controller
                     'pay_run_id' => $run->id, 'employee_id' => $e->emp_id,
                     'employee_name' => trim($e->emp_first_name . ' ' . $e->emp_last_name),
                     'pay_basis' => $j->pay_basis, 'hourly_rate' => $j->hourly_rate, 'annual_salary' => $j->annual_salary,
-                    'hours' => $j->pay_basis === 'hourly' ? $this->defaultHours($j, $d['frequency']) : null,
+                    'hours' => null,
                     'super_fund_name' => $fund?->fund_name, 'super_member_number' => $fund?->member_number,
                 ]);
+                if ($j->pay_basis === 'hourly') {
+                    $this->fillHours($line, $j, $run);
+                }
                 $this->calculate($line, $run->frequency, (int) round(((float) $run->super_rate) * 100));
                 $line->save();
             }
@@ -146,6 +150,7 @@ class PayRunController extends Controller
             'tax_override' => ['nullable', 'numeric', 'min:0', 'max:9999999.99', $this->twoDecimals('Tax')],
             'clear_tax_override' => ['nullable', 'boolean'],
             'confirm_tax' => ['nullable', 'boolean'],
+            'confirm_hours' => ['nullable', 'boolean'],
         ]);
         if ($v->fails()) {
             return $this->failure('Please fix the highlighted fields.', 422, $v->errors()->toArray());
@@ -156,6 +161,8 @@ class PayRunController extends Controller
                 return $this->failure('This employee is paid a salary, so there are no hours to enter.', 422);
             }
             $line->hours = $d['hours'] ?? null;
+            $line->hours_source = $line->hours === null ? null : 'manual';
+            $line->hours_confirmed = $line->hours !== null;
             if (!$line->tax_overridden) {
                 $line->tax_confirmed = false; // the amount changed, so an earlier confirmation no longer applies
             }
@@ -171,6 +178,9 @@ class PayRunController extends Controller
         }
         if (!empty($d['confirm_tax'])) {
             $line->tax_confirmed = true;
+        }
+        if (!empty($d['confirm_hours']) && $line->hours !== null) {
+            $line->hours_confirmed = true;
         }
         $this->calculate($line, $run->frequency, (int) round(((float) $run->super_rate) * 100));
         $line->save();
@@ -216,6 +226,8 @@ class PayRunController extends Controller
         foreach ($lines as $l) {
             if ($l->pay_basis === 'hourly' && $l->hours === null) {
                 $problems[] = $l->employee_name . ': enter hours, or remove them from this run';
+            } elseif ($l->pay_basis === 'hourly' && !$l->hours_confirmed) {
+                $problems[] = $l->employee_name . ': check the hours, which are only an estimate from their usual week';
             } elseif ($l->tax_status !== 'auto' && !$l->tax_confirmed) {
                 $problems[] = $l->employee_name . ': check and confirm the tax';
             }
@@ -272,6 +284,51 @@ class PayRunController extends Controller
     private function cents($v): int
     {
         return (int) round(((float) $v) * 100);
+    }
+
+    /** Replaces hourly lines' hours with approved timesheet hours where there are any. Returns how many lines changed. */
+    public function refreshHours(int $id): JsonResponse
+    {
+        if (!$b = $this->business()) {
+            return $this->noBusiness();
+        }
+        $run = PayRun::where('company_id', $b->company_id)->where('id', $id)->first();
+        if (!$run) {
+            return $this->failure('Pay run not found.', 404);
+        }
+        if ($run->status !== 'draft') {
+            return $this->failure('This pay run is finalised and can no longer be changed.', 422);
+        }
+        $changed = 0;
+        DB::transaction(function () use ($run, &$changed) {
+            foreach (PayRunLine::where('pay_run_id', $run->id)->where('pay_basis', 'hourly')->get() as $l) {
+                $h = TimesheetHours::approvedHundredths((int) $run->company_id, (int) $l->employee_id, $run->period_start->toDateString(), $run->period_end->toDateString());
+                if ($h === null) {
+                    continue;
+                }
+                $l->forceFill(['hours' => $h / 100, 'hours_source' => 'timesheet', 'hours_confirmed' => true]);
+                if (!$l->tax_overridden) {
+                    $l->tax_confirmed = false;
+                }
+                $this->calculate($l, $run->frequency, (int) round(((float) $run->super_rate) * 100));
+                $l->save();
+                $changed++;
+            }
+            $this->totals($run);
+        });
+        return response()->json(['data' => $this->full($run->fresh(), $b), 'updated' => $changed]);
+    }
+
+    /** Hours for a new hourly line: approved timesheets if there are any, otherwise an estimate the person must check. */
+    private function fillHours(PayRunLine $line, EmploymentInformation $j, PayRun $run): void
+    {
+        $h = TimesheetHours::approvedHundredths((int) $run->company_id, (int) $line->employee_id, $run->period_start->toDateString(), $run->period_end->toDateString());
+        if ($h !== null) {
+            $line->hours = $h / 100; $line->hours_source = 'timesheet'; $line->hours_confirmed = true;
+            return;
+        }
+        $est = $this->defaultHours($j, $run->frequency);
+        $line->hours = $est; $line->hours_source = $est === null ? null : 'estimated'; $line->hours_confirmed = false;
     }
 
     private function defaultHours(EmploymentInformation $j, string $freq): ?float
@@ -385,7 +442,7 @@ class PayRunController extends Controller
     private function full(PayRun $r, $business): array
     {
         $lines = PayRunLine::where('pay_run_id', $r->id)->orderBy('employee_name')->get();
-        $needs = $lines->filter(fn ($l) => ($l->pay_basis === 'hourly' && $l->hours === null) || ($l->tax_status !== 'auto' && !$l->tax_confirmed))->count();
+        $needs = $lines->filter(fn (PayRunLine $l) => $l->needsAttention())->count();
         $draft = $r->status === 'draft';
         $ytd = $draft ? [] : $this->yearToDate($r);
 
@@ -402,6 +459,7 @@ class PayRunController extends Controller
                 'hourly_rate' => $l->hourly_rate !== null ? (float) $l->hourly_rate : null,
                 'annual_salary' => $l->annual_salary !== null ? (float) $l->annual_salary : null,
                 'hours' => $l->hours !== null ? (float) $l->hours : null,
+                'hours_source' => $l->hours_source, 'hours_confirmed' => (bool) $l->hours_confirmed,
                 'gross' => $this->money($l->gross), 'tax' => $this->money($l->tax),
                 'super_amount' => $this->money($l->super_amount), 'net' => $this->money($l->net),
                 'tax_method' => $l->tax_method, 'tax_status' => $l->tax_status, 'tax_note' => $l->tax_note,
