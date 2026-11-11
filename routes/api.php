@@ -281,6 +281,8 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
         Route::post('/accounts/{id}/import', [$imp, 'store'])->whereNumber('id');
         Route::delete('/imports/{id}', [$imp, 'undo'])->whereNumber('id');
         Route::get('/accounts/{id}/transactions', [$txn, 'index'])->whereNumber('id');
+        Route::get('/transactions', [$txn, 'all']);
+        Route::get('/summary', [$txn, 'summary']);
         Route::post('/transactions/{id}/status', [$txn, 'setStatus'])->whereNumber('id');
     });
 
