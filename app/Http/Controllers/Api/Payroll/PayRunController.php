@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Api\Sales\Concerns\SalesSupport;
 use App\Models\Employee;
 use App\Models\EmploymentInformation;
+use App\Models\LeaveEntry;
+use App\Models\LeaveRequest;
 use App\Models\LeaveType;
 use App\Models\PayRun;
 use App\Models\PayRunLine;
@@ -610,6 +612,8 @@ class PayRunController extends Controller
         $draft = $r->status === 'draft';
         $items = PayRunLineItem::whereIn('pay_run_line_id', $lines->pluck('id'))->orderBy('id')->get()->groupBy('pay_run_line_id');
         $ytd = $draft ? [] : $this->yearToDate($r);
+        $entitled = $draft ? [] : $this->entitlements($r, $lines->pluck('employee_id'));
+        $taken = $draft ? [] : $this->leaveTaken($r, $lines->where('pay_basis', 'salary')->pluck('employee_id'));
         $leaveTypes = $draft ? LeaveType::where('company_id', $r->company_id)->pluck('name', 'id') : collect();
         $leaveToPay = $draft ? LeaveService::unpaidApproved($r->company_id, $lines->where('pay_basis', 'hourly')->pluck('employee_id'))->groupBy('employee_id') : collect();
 
@@ -644,6 +648,8 @@ class PayRunController extends Controller
                 'tax_overridden' => (bool) $l->tax_overridden, 'tax_confirmed' => (bool) $l->tax_confirmed,
                 'super_fund_name' => $l->super_fund_name, 'super_member_number' => $l->super_member_number,
                 'ytd' => $ytd[$l->employee_id] ?? null,
+                'entitlements' => $entitled[$l->employee_id] ?? [],
+                'leave_taken' => $taken[$l->employee_id] ?? [],
             ])->values(),
         ];
     }
@@ -663,15 +669,55 @@ class PayRunController extends Controller
             ->where(function ($q) use ($r) {
                 $q->whereDate('x.pay_date', '<', $r->pay_date->toDateString())
                   ->orWhere(fn ($q2) => $q2->whereDate('x.pay_date', $r->pay_date->toDateString())->where('x.id', '<=', $r->id));
-            })->get(['l.employee_id', 'l.gross', 'l.tax', 'l.super_amount', 'l.net']);
+            })->get(['l.id', 'l.employee_id', 'l.gross', 'l.tax', 'l.super_amount', 'l.net', 'l.base_pay', 'l.study_loan']);
+        $items = PayRunLineItem::whereIn('pay_run_line_id', $rows->pluck('id'))->get()->groupBy('pay_run_line_id');
+        $kinds = ['allowance', 'bonus', 'overtime', 'leave', 'reimbursement', 'deduction'];
         $out = [];
         foreach ($rows as $x) {
             $o = &$out[$x->employee_id];
-            $o ??= ['gross' => 0, 'tax' => 0, 'super' => 0, 'net' => 0];
+            $o ??= ['gross' => 0, 'tax' => 0, 'super' => 0, 'net' => 0, 'base_pay' => 0, 'study_loan' => 0, 'items' => array_fill_keys($kinds, 0)];
             $o['gross'] += $this->cents($x->gross); $o['tax'] += $this->cents($x->tax);
             $o['super'] += $this->cents($x->super_amount); $o['net'] += $this->cents($x->net);
+            $o['base_pay'] += $this->cents($x->base_pay); $o['study_loan'] += $this->cents($x->study_loan);
+            foreach ($items->get($x->id) ?? [] as $it) {
+                $o['items'][$it->kind] += $this->cents($it->amount);
+            }
             unset($o);
         }
-        return array_map(fn ($o) => array_map(fn ($v) => $v / 100, $o), $out);
+        $div = fn ($v) => $v / 100;
+        return array_map(fn ($o) => array_map($div, array_diff_key($o, ['items' => 1])) + ['items' => array_map($div, $o['items'])], $out);
+    }
+
+    /** Leave built up in a finalised run and each paid leave balance as at its pay date, per employee. */
+    private function entitlements(PayRun $r, $employeeIds): array
+    {
+        $types = LeaveService::types($r->company_id)->filter(fn ($t) => $t->paid);
+        $accrued = LeaveEntry::where('company_id', $r->company_id)->where('kind', 'accrual')->where('source_id', $r->id)->whereIn('employee_id', $employeeIds)->get();
+        $balances = LeaveEntry::where('company_id', $r->company_id)->whereIn('employee_id', $employeeIds)->whereDate('entry_date', '<=', $r->pay_date->toDateString())
+            ->selectRaw('employee_id, leave_type_id, SUM(ROUND(hours * 100)) as h')->groupBy('employee_id', 'leave_type_id')->get();
+        $out = [];
+        foreach ($employeeIds as $eid) {
+            foreach ($types as $t) {
+                $a = $accrued->where('employee_id', $eid)->where('leave_type_id', $t->id)->sum(fn ($e) => LeaveService::hundredths($e->hours)) / 100;
+                $bal = ((int) ($balances->first(fn ($b) => (int) $b->employee_id === (int) $eid && (int) $b->leave_type_id === (int) $t->id)->h ?? 0)) / 100;
+                if ($a != 0 || $bal != 0) {
+                    $out[$eid][] = ['type' => $t->name, 'accrued' => $a, 'balance' => $bal];
+                }
+            }
+        }
+        return $out;
+    }
+
+    /** Approved leave inside the pay period for salaried staff, who are paid their salary while away. */
+    private function leaveTaken(PayRun $r, $salariedIds): array
+    {
+        $types = LeaveType::where('company_id', $r->company_id)->pluck('name', 'id');
+        return LeaveRequest::where('company_id', $r->company_id)->where('status', 'approved')->whereIn('employee_id', $salariedIds)
+            ->whereDate('start_date', '<=', $r->period_end->toDateString())->whereDate('end_date', '>=', $r->period_start->toDateString())
+            ->orderBy('start_date')->get()->groupBy('employee_id')
+            ->map(fn ($g) => $g->map(fn ($q) => [
+                'type' => $types[$q->leave_type_id] ?? 'Leave', 'start_date' => $q->start_date->toDateString(),
+                'end_date' => $q->end_date->toDateString(), 'hours' => (float) $q->hours,
+            ])->values())->all();
     }
 }
