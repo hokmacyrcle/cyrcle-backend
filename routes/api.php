@@ -237,6 +237,8 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
         Route::get('/employees/{id}', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'show'])->whereNumber('id');
         Route::put('/employees/{id}', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'update'])->whereNumber('id');
         Route::post('/employees/{id}/archive', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'setArchived'])->whereNumber('id');
+        Route::post('/pay-runs/{id}/lines/{lineId}/items', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'addItem'])->whereNumber('id')->whereNumber('lineId');
+        Route::delete('/pay-runs/{id}/lines/{lineId}/items/{itemId}', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'removeItem'])->whereNumber('id')->whereNumber('lineId')->whereNumber('itemId');
         Route::get('/timesheets', [App\Http\Controllers\Api\Payroll\TimesheetController::class, 'index']);
         Route::put('/timesheets/{employeeId}', [App\Http\Controllers\Api\Payroll\TimesheetController::class, 'save'])->whereNumber('employeeId');
         Route::post('/timesheets/{employeeId}/approve', [App\Http\Controllers\Api\Payroll\TimesheetController::class, 'approve'])->whereNumber('employeeId');

@@ -8,6 +8,7 @@ use App\Models\Employee;
 use App\Models\EmploymentInformation;
 use App\Models\PayRun;
 use App\Models\PayRunLine;
+use App\Models\PayRunLineItem;
 use App\Models\PayrollSetting;
 use App\Models\SuperannuationFund;
 use App\Models\TaxDetail;
@@ -188,6 +189,95 @@ class PayRunController extends Controller
         return response()->json(['data' => $this->full($run->fresh(), $b)]);
     }
 
+    /** Adds an allowance, bonus, overtime, reimbursement or deduction to one employee's line. */
+    public function addItem(Request $request, int $id, int $lineId): JsonResponse
+    {
+        if (!$b = $this->business()) {
+            return $this->noBusiness();
+        }
+        [$run, $line] = $this->findLine($b->company_id, $id, $lineId);
+        if (!$run) {
+            return $this->failure('Pay run not found.', 404);
+        }
+        if ($run->status !== 'draft') {
+            return $this->failure('This pay run is finalised and can no longer be changed.', 422);
+        }
+        $v = Validator::make($request->all(), [
+            'kind' => ['required', Rule::in(PayRunLineItem::MANUAL)],
+            'label' => ['required', 'string', 'max:60'],
+            'amount' => ['required_unless:kind,overtime', 'nullable', 'numeric', 'gt:0', 'max:9999999.99', $this->twoDecimals('Amount')],
+            'hours' => ['required_if:kind,overtime', 'nullable', 'numeric', 'gt:0', 'max:744', $this->twoDecimals('Hours')],
+            'rate' => ['required_if:kind,overtime', 'nullable', 'numeric', 'gt:0', 'max:9999.99', $this->twoDecimals('Rate')],
+            'counts_for_super' => ['nullable', 'boolean'],
+        ], [
+            'kind.required' => 'Choose the type of item.',
+            'label.required' => 'Describe the item, for example "Phone allowance".',
+            'label.max' => 'Keep the description under 60 characters.',
+            'amount.required_unless' => 'Enter an amount.',
+            'amount.gt' => 'The amount must be more than 0.',
+            'hours.required_if' => 'Enter the overtime hours.',
+            'rate.required_if' => 'Enter the overtime rate per hour.',
+        ]);
+        if ($v->fails()) {
+            return $this->failure('Please fix the highlighted fields.', 422, $v->errors()->toArray());
+        }
+        $d = $v->validated();
+        $kind = $d['kind'];
+        $hours = $kind === 'overtime' ? (float) $d['hours'] : null;
+        $rate = $kind === 'overtime' ? (float) $d['rate'] : null;
+        $amountC = $kind === 'overtime' ? Calc::hourlyGrossCents($this->cents($hours), $this->cents($rate)) : $this->cents($d['amount']);
+        $super = in_array($kind, ['allowance', 'bonus'], true) ? (bool) ($d['counts_for_super'] ?? true) : false;
+
+        try {
+            DB::transaction(function () use ($line, $run, $kind, $d, $hours, $rate, $amountC, $super) {
+                PayRunLineItem::create([
+                    'pay_run_line_id' => $line->id, 'kind' => $kind, 'label' => trim($d['label']),
+                    'hours' => $hours, 'rate' => $rate, 'amount' => $amountC / 100, 'counts_for_super' => $super,
+                ]);
+                $this->recalc($line, $run, true);
+            });
+        } catch (\DomainException $e) {
+            return $this->failure($e->getMessage(), 422); // the transaction was rolled back, so nothing was added
+        }
+        return response()->json(['data' => $this->full($run->fresh(), $b)], 201);
+    }
+
+    public function removeItem(int $id, int $lineId, int $itemId): JsonResponse
+    {
+        if (!$b = $this->business()) {
+            return $this->noBusiness();
+        }
+        [$run, $line] = $this->findLine($b->company_id, $id, $lineId);
+        if (!$run) {
+            return $this->failure('Pay run not found.', 404);
+        }
+        if ($run->status !== 'draft') {
+            return $this->failure('This pay run is finalised and can no longer be changed.', 422);
+        }
+        $item = PayRunLineItem::where('pay_run_line_id', $line->id)->where('id', $itemId)->first();
+        if (!$item) {
+            return $this->failure('Item not found.', 404);
+        }
+        $item->delete();
+        $this->recalc($line, $run, false);
+        return response()->json(['data' => $this->full($run->fresh(), $b)]);
+    }
+
+    /** Recalculates a line after its items changed. With $guard, throws if take-home pay would go below zero. */
+    private function recalc(PayRunLine $line, PayRun $run, bool $guard = true): void
+    {
+        $line = $line->fresh();
+        if (!$line->tax_overridden) {
+            $line->tax_confirmed = false; // the amounts changed, so an earlier confirmation no longer applies
+        }
+        $this->calculate($line, $run->frequency, (int) round(((float) $run->super_rate) * 100));
+        if ($guard && $line->net < 0) {
+            throw new \DomainException('Deductions cannot be more than the pay after tax.');
+        }
+        $line->save();
+        $this->totals($run);
+    }
+
     public function destroyLine(int $id, int $lineId): JsonResponse
     {
         if (!$b = $this->business()) {
@@ -224,6 +314,10 @@ class PayRunController extends Controller
         }
         $problems = [];
         foreach ($lines as $l) {
+            if ($l->net < 0) {
+                $problems[] = $l->employee_name . ': take-home pay is below zero, so check the deductions';
+                continue;
+            }
             if ($l->pay_basis === 'hourly' && $l->hours === null) {
                 $problems[] = $l->employee_name . ': enter hours, or remove them from this run';
             } elseif ($l->pay_basis === 'hourly' && !$l->hours_confirmed) {
@@ -355,6 +449,23 @@ class PayRunController extends Controller
             $grossC = Calc::hourlyGrossCents($this->cents($l->hours), $this->cents($l->hourly_rate));
         }
 
+        // Extra items: taxable earnings add to gross, reimbursements and deductions only change take-home pay.
+        $baseC = $grossC;
+        $earnC = $superEarnC = $reimbC = $dedC = 0;
+        $items = $l->exists ? PayRunLineItem::where('pay_run_line_id', $l->id)->get() : collect();
+        foreach ($items as $it) {
+            $a = $this->cents($it->amount);
+            if ($it->isTaxable()) {
+                $earnC += $a;
+                $superEarnC += $it->counts_for_super ? $a : 0;
+            } elseif ($it->kind === 'reimbursement') {
+                $reimbC += $a;
+            } elseif ($it->kind === 'deduction') {
+                $dedC += $a;
+            }
+        }
+        $grossC = $baseC + $earnC;
+
         $tax = TaxDetail::where('employee_id', $l->employee_id)->first();
         $hasTfn = $tax && !empty($tax->getRawOriginal('tax_file_number'));
         $foreign = $tax && $tax->residency_status === 'Foreign resident';
@@ -386,13 +497,16 @@ class PayRunController extends Controller
                 $l->tax_confirmed = $status === 'auto' ? false : $l->tax_confirmed;
             }
         }
+        $l->base_pay = $baseC / 100;
+        $l->reimbursements = $reimbC / 100;
+        $l->deductions = $dedC / 100;
         $l->gross = $grossC / 100;
         $l->tax = $taxC / 100;
         $l->tax_method = $method;
         $l->tax_status = $status;
         $l->tax_note = $note;
-        $l->super_amount = Calc::superCents($grossC, $rateHundredths) / 100;
-        $l->net = ($grossC - $taxC) / 100;
+        $l->super_amount = Calc::superCents($baseC + $superEarnC, $rateHundredths) / 100;
+        $l->net = ($grossC - $taxC + $reimbC - $dedC) / 100;
     }
 
     private function totals(PayRun $run): void
@@ -444,6 +558,7 @@ class PayRunController extends Controller
         $lines = PayRunLine::where('pay_run_id', $r->id)->orderBy('employee_name')->get();
         $needs = $lines->filter(fn (PayRunLine $l) => $l->needsAttention())->count();
         $draft = $r->status === 'draft';
+        $items = PayRunLineItem::whereIn('pay_run_line_id', $lines->pluck('id'))->orderBy('id')->get()->groupBy('pay_run_line_id');
         $ytd = $draft ? [] : $this->yearToDate($r);
 
         return $this->row($r, $lines->count()) + [
@@ -459,6 +574,12 @@ class PayRunController extends Controller
                 'hourly_rate' => $l->hourly_rate !== null ? (float) $l->hourly_rate : null,
                 'annual_salary' => $l->annual_salary !== null ? (float) $l->annual_salary : null,
                 'hours' => $l->hours !== null ? (float) $l->hours : null,
+                'base_pay' => $this->money($l->base_pay), 'reimbursements' => $this->money($l->reimbursements), 'deductions' => $this->money($l->deductions),
+                'items' => ($items->get($l->id) ?? collect())->map(fn ($i) => [
+                    'id' => $i->id, 'kind' => $i->kind, 'label' => $i->label,
+                    'hours' => $i->hours !== null ? (float) $i->hours : null, 'rate' => $i->rate !== null ? (float) $i->rate : null,
+                    'amount' => $this->money($i->amount), 'counts_for_super' => (bool) $i->counts_for_super,
+                ])->values(),
                 'hours_source' => $l->hours_source, 'hours_confirmed' => (bool) $l->hours_confirmed,
                 'gross' => $this->money($l->gross), 'tax' => $this->money($l->tax),
                 'super_amount' => $this->money($l->super_amount), 'net' => $this->money($l->net),
