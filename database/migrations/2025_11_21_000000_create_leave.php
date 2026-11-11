@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         // The kinds of leave a business offers, with how fast each one builds up (hours worked for 1 hour of leave).
-        Schema::create('leave_types', function (Blueprint $table) {
+        if (!Schema::hasTable('leave_types')) Schema::create('leave_types', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('company_id');
             $table->string('code', 12);                       // annual | personal | unpaid
@@ -21,7 +21,7 @@ return new class extends Migration
         });
 
         // Every change to a leave balance, in hours (plus = added, minus = used). The balance is the sum.
-        Schema::create('leave_entries', function (Blueprint $table) {
+        if (!Schema::hasTable('leave_entries')) Schema::create('leave_entries', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('company_id')->index();
             $table->unsignedBigInteger('employee_id');
@@ -35,7 +35,8 @@ return new class extends Migration
             $table->index(['employee_id', 'leave_type_id']);
         });
 
-        Schema::create('leave_requests', function (Blueprint $table) {
+        // Named leave_applications because the old leave module's leave_requests table may still exist.
+        if (!Schema::hasTable('leave_applications')) Schema::create('leave_applications', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('company_id')->index();
             $table->unsignedBigInteger('employee_id')->index();
