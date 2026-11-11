@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Api\Sales\Concerns\SalesSupport;
 use App\Models\Contact;
 use App\Rules\ValidAbn;
+use App\Services\Sales\CustomerInsights;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -56,8 +57,10 @@ class CustomerController extends Controller
         $page = $q->orderBy('contact_company_name')->orderBy('contact_first_name')
             ->paginate(min(max((int) $request->query('per_page', 15), 1), 50));
 
+        $insights = (new CustomerInsights())->forContacts((int) $b->company_id, $page->getCollection()->pluck('contact_id')->all());
+
         return response()->json([
-            'data' => $page->getCollection()->map(fn (Contact $c) => $this->row($c))->values(),
+            'data' => $page->getCollection()->map(fn (Contact $c) => $this->row($c) + ['payment' => $insights[$c->contact_id] ?? null])->values(),
             'meta' => ['page' => $page->currentPage(), 'per_page' => $page->perPage(), 'total' => $page->total(), 'last_page' => $page->lastPage()],
         ]);
     }
