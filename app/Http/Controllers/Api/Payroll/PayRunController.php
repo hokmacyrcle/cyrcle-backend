@@ -231,6 +231,23 @@ class PayRunController extends Controller
         });
     }
 
+    /** Records (or undoes) that the employer paid the super for a finalised run. */
+    public function superPaid(Request $request, int $id): JsonResponse
+    {
+        if (!$b = $this->business()) {
+            return $this->noBusiness();
+        }
+        $run = PayRun::where('company_id', $b->company_id)->where('id', $id)->first();
+        if (!$run) {
+            return $this->failure('Pay run not found.', 404);
+        }
+        if ($run->status !== 'finalised') {
+            return $this->failure('Super can be marked as paid once the pay run is finalised.', 422);
+        }
+        $run->forceFill(['super_paid_at' => $request->boolean('paid', true) ? now() : null])->save();
+        return response()->json(['data' => $this->full($run->fresh(), $b)]);
+    }
+
     public function destroy(int $id): JsonResponse
     {
         if (!$b = $this->business()) {
@@ -374,6 +391,7 @@ class PayRunController extends Controller
 
         return $this->row($r, $lines->count()) + [
             'super_due_date' => $r->super_due_date?->toDateString(),
+            'super_paid_at' => $r->super_paid_at ? Carbon::parse($r->super_paid_at)->toIso8601String() : null,
             'finalised_at' => $r->finalised_at?->toIso8601String(),
             'employer' => $this->presentSeller($business), 'super_rate' => (float) $r->super_rate,
             'needs_attention' => $needs,

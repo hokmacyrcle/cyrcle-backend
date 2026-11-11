@@ -10,7 +10,7 @@ class PayRun extends Model
 
     protected $casts = [
         'period_start' => 'date', 'period_end' => 'date', 'pay_date' => 'date', 'super_due_date' => 'date',
-        'finalised_at' => 'datetime',
+        'finalised_at' => 'datetime', 'super_paid_at' => 'datetime',
     ];
 
     public function lines()
