@@ -578,48 +578,6 @@ class ContactController extends Controller
     }
 
     /**
-     * Debug authentication method
-     */
-    public function testAuth(): JsonResponse
-    {
-        try {
-            $apiUser = auth()->guard('api')->user();
-            $defaultUser = auth()->user();
-            $requestUser = request()->user();
-            
-            return response()->json([
-                'success' => true,
-                'debug_info' => [
-                    'api_guard_user' => $apiUser ? [
-                        'id' => $apiUser->id,
-                        'name' => $apiUser->name,
-                        'company_id' => $apiUser->company_id ?? 'null'
-                    ] : 'null',
-                    'default_guard_user' => $defaultUser ? [
-                        'id' => $defaultUser->id,
-                        'name' => $defaultUser->name,
-                        'company_id' => $defaultUser->company_id ?? 'null'
-                    ] : 'null',
-                    'request_user' => $requestUser ? [
-                        'id' => $requestUser->id,
-                        'name' => $requestUser->name,
-                        'company_id' => $requestUser->company_id ?? 'null'
-                    ] : 'null',
-                    'auth_check' => auth()->check(),
-                    'api_auth_check' => auth()->guard('api')->check(),
-                    'headers' => request()->headers->all()
-                ],
-                'message' => 'Authentication debug information'
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error in debug: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
      * Clean and normalize contact data before validation
      */
     private function cleanContactData(array $data): array

@@ -1206,43 +1206,6 @@ class QuoteController extends Controller
     }
 
     /**
-     * Test authentication for debugging.
-     */
-    public function testAuth(): JsonResponse
-    {
-        try {
-            $apiUser = Auth::guard('api')->user();
-            $defaultUser = Auth::user();
-            
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'api_guard_user' => $apiUser ? [
-                        'id' => $apiUser->id,
-                        'name' => $apiUser->name,
-                        'email' => $apiUser->email
-                    ] : null,
-                    'default_guard_user' => $defaultUser ? [
-                        'id' => $defaultUser->id,
-                        'name' => $defaultUser->name,
-                        'email' => $defaultUser->email
-                    ] : null,
-                    'api_guard_check' => Auth::guard('api')->check(),
-                    'default_guard_check' => Auth::check(),
-                    'current_guard' => Auth::getDefaultDriver()
-                ],
-                'message' => 'Authentication test completed'
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error testing authentication: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
      * Get status history for a quote.
      */
     public function getStatusHistory($id): JsonResponse

@@ -3,15 +3,8 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-use App\Http\Controllers\Api\Employees\EmploymentInformationInsertController;
-use App\Http\Controllers\Api\Employees\EmployeeController;
-use App\Http\Controllers\Api\Employees\EmployeeFormController;
-use App\Http\Controllers\Api\Employees\TaxController;
-use App\Http\Controllers\Api\Employees\PayTemplateController;
 use App\Http\Controllers\Api\Employees\EmployeeLeaveController;
 use App\Http\Controllers\Api\AccountController;
-use App\Http\Controllers\Api\DeductionController;
-use App\Http\Controllers\Api\BankAccountController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\CompanyController;
 
@@ -37,42 +30,6 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/firm/register', [App\Http\Controllers\Api\Auth\FirmSignupController::class, 'registerFirm']);
 });
 
-// Test routes for debugging Hostinger issues
-Route::get('/test-auth', function () {
-    return response()->json([
-        'status' => true,
-        'message' => 'Public API endpoint working',
-        'timestamp' => now()
-    ]);
-});
-
-// Test route without any middleware
-Route::get('/public-test', function () {
-    return response()->json([
-        'status' => true,
-        'message' => 'Public endpoint - no middleware',
-        'timestamp' => now(),
-        'php_version' => PHP_VERSION,
-        'laravel_version' => app()->version()
-    ]);
-});
-
-// Debug route to check token without middleware
-Route::get('/debug-token', function (Request $request) {
-    $headers = $request->headers->all();
-    $authHeader = $request->header('Authorization');
-    
-    return response()->json([
-        'status' => true,
-        'message' => 'Token debug info',
-        'has_authorization_header' => !empty($authHeader),
-        'authorization_header' => $authHeader,
-        'all_headers' => $headers,
-        'bearer_token' => $request->bearerToken(),
-        'timestamp' => now()
-    ]);
-});
-
 Route::get('/ping', function () {
     return response()->json([
         'status' => 'pong',
@@ -83,10 +40,7 @@ Route::get('/ping', function () {
 
 Route::get('/health', function () {
     return response()->json([
-        'status' => 'healthy',
-        'environment' => app()->environment(),
-        'php_version' => PHP_VERSION,
-        'laravel_version' => app()->version()
+        'status' => 'healthy'
     ]);
 });
 
@@ -262,7 +216,6 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
     Route::get('/contacts/{contact}/audit-history', [App\Http\Controllers\Api\ContactController::class, 'auditHistory']);
     Route::post('/contacts/bulk-update-status', [App\Http\Controllers\Api\ContactController::class, 'bulkUpdateStatus']);
     Route::get('/contacts/statistics', [App\Http\Controllers\Api\ContactController::class, 'getStatistics']);
-    Route::get('/contacts/test-auth', [App\Http\Controllers\Api\ContactController::class, 'testAuth']);
 
     // Company routes
     Route::apiResource('companies', App\Http\Controllers\Api\CompanyController::class);
@@ -275,36 +228,6 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
     Route::get('/bills/{id}/attachments', [App\Http\Controllers\Api\BillController::class, 'getAttachments']);
     Route::delete('/bills/{id}/attachments', [App\Http\Controllers\Api\BillController::class, 'deleteAttachment']);
     Route::get('/bills/{id}/attachments/{filename}/download', [App\Http\Controllers\Api\BillController::class, 'downloadAttachment']);
-
-    Route::apiResource('employees', App\Http\Controllers\Api\Employees\EmployeeController::class);
-    Route::get('/employees-active', [App\Http\Controllers\Api\Employees\EmployeeController::class, 'active']);
-    Route::patch('/employees/{employee}/toggle-status', [App\Http\Controllers\Api\Employees\EmployeeController::class, 'toggleStatus']);
-    Route::get('/employees/{employee}/audit-history', [App\Http\Controllers\Api\Employees\EmployeeController::class, 'auditHistory']);
-    Route::delete('/employees/{employee}', [App\Http\Controllers\Api\Employees\EmployeeController::class, 'destroy']); // explicit destroy
-
-    // Employee details endpoints
-    Route::get('/employee-details/{id}', [App\Http\Controllers\Api\Employees\EmployeeController::class, 'employee_details']);
-    Route::put('/update-employee-details/{id}', [App\Http\Controllers\Api\Employees\EmployeeController::class, 'updateEmployeeDetails']);
-    Route::get('/employee-dropdown', [App\Http\Controllers\Api\Employees\EmployeeController::class, 'employeeDropdown']);
-
-    // Employee Form API routes
-    Route::prefix('employee-form')->group(function () {
-        Route::get('/form-data', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'getFormData']);
-        Route::post('/', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'store']);
-        Route::get('/{id}', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'show']);
-        Route::get('/{id}/edit', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'edit']);
-        Route::put('/{id}', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'update']);
-        Route::delete('/{id}', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'destroy']);
-        Route::get('/search', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'search']);
-        
-        // Profile Image Management
-        Route::post('/{id}/profile-image', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'uploadProfileImage']);
-        Route::get('/{id}/profile-image', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'getProfileImage']);
-        Route::delete('/{id}/profile-image', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'deleteProfileImage']);
-        
-        // Attachments Management
-        Route::get('/{id}/attachments', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'getAttachments']);
-    });
 
     // Sales (Australian invoicing): the screens in Sales use these. Everything is limited to the selected business.
     // Payroll: employees of the business being worked in
@@ -391,7 +314,6 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
     Route::get('/quotes/{quote}/versions/statistics', [App\Http\Controllers\Api\QuoteController::class, 'getVersionStatistics']);
 
     // Debug route for authentication testing
-    Route::get('/quotes/test-auth', [App\Http\Controllers\Api\QuoteController::class, 'testAuth']);
 
     // Quote attachment routes
     Route::post('/quotes/{quote}/attachments', [App\Http\Controllers\Api\QuoteController::class, 'uploadAttachments']);
@@ -425,48 +347,6 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
 
 
     
-    // Employment Information APIs
-    Route::prefix('employment-insert')->group(function () {
-        Route::post('/multiple', [EmploymentInformationInsertController::class, 'insertMultiple']);
-        Route::post('/bulk', [EmploymentInformationInsertController::class, 'bulkInsert']);
-        Route::post('/superannuation', [EmploymentInformationInsertController::class, 'updateSuperannuation']);
-        Route::post('/authorized-fields', [EmploymentInformationInsertController::class, 'updateAuthorizedFields']);
-        Route::get('/statistics', [EmploymentInformationInsertController::class, 'getStatistics']);
-        Route::get('/employees-by-group', [EmploymentInformationInsertController::class, 'getEmployeesByGroup']);
-    });
-
-    // Endpoints to create/update and fetch single employment information
-    Route::post('/update-employee-contract-information', [EmployeeController::class, 'updateEmployeeContractInformation']);
-    Route::get('/update-employee-contract-information/{employee_id}', [EmployeeController::class, 'getEmployeeContractInformation']);
-    
-    // Tax Details Management APIs
-    Route::prefix('tax-details')->group(function () {
-        Route::post('/', [App\Http\Controllers\Api\Employees\TaxController::class, 'store']);                    // Create tax details
-        Route::get('/{employee_id}', [App\Http\Controllers\Api\Employees\TaxController::class, 'show']);         // View tax details
-        Route::put('/{employee_id}', [App\Http\Controllers\Api\Employees\TaxController::class, 'update']);       // Update tax details
-    });
-    
-    // Bank Account Management APIs
-    Route::prefix('bank-accounts')->group(function () {
-        Route::post('/', [BankAccountController::class, 'store']);                         // Create bank account
-        Route::get('/{employee_id}', [BankAccountController::class, 'show']);             // View bank accounts for employee
-        Route::put('/{bank_account_id}', [BankAccountController::class, 'update']);       // Update bank account
-    });
-    
-    // Pay Template Management APIs
-    Route::prefix('pay-templates')->group(function () {
-        Route::post('/', [App\Http\Controllers\Api\Employees\PayTemplateController::class, 'store']);                            // Create pay template
-        Route::get('/{pay_template_id}', [App\Http\Controllers\Api\Employees\PayTemplateController::class, 'show']);             // View specific pay template
-        Route::put('/{pay_template_id}', [App\Http\Controllers\Api\Employees\PayTemplateController::class, 'update']);           // Update pay template
-    });
-    
-    // Deduction Management APIs
-    Route::prefix('deductions')->group(function () {
-        Route::post('/', [DeductionController::class, 'store']);                         // Create deduction
-        Route::get('/{employee_id}', [DeductionController::class, 'show']);             // View deductions for employee
-        Route::put('/{deduction_id}', [DeductionController::class, 'update']);          // Update deduction
-    });
-
     // Leave Requests
     Route::get('/leave-requests', [EmployeeLeaveController::class, 'index']);
     Route::get('/leave-requests/{leaveRequestId}', [EmployeeLeaveController::class, 'showLeave']);
