@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Sales\Concerns\SalesSupport;
 use App\Models\EmploymentInformation;
 use App\Models\PayRun;
 use App\Models\PayRunLine;
+use App\Models\PayRunLineItem;
 use App\Models\PayrollSetting;
 use App\Models\TaxDetail;
 use App\Services\Payroll\StpMapper;
@@ -38,7 +39,8 @@ class StpController extends Controller
             $runIssues[] = ['level' => 'blocking', 'text' => 'The business needs a valid 11-digit ABN. Add it in Settings.'];
         }
 
-        $out = $lines->map(function (PayRunLine $l) use ($jobs, $taxes, $weekly) {
+        $untyped = PayRunLineItem::whereIn('pay_run_line_id', $lines->pluck('id'))->where('kind', 'allowance')->whereNull('allowance_type')->get()->groupBy('pay_run_line_id');
+        $out = $lines->map(function (PayRunLine $l) use ($jobs, $taxes, $weekly, $untyped) {
             $job = $jobs->get($l->employee_id);
             $tax = $taxes->get($l->employee_id);
             $hasTfn = $tax && !empty($tax->getRawOriginal('tax_file_number'));
@@ -50,6 +52,9 @@ class StpController extends Controller
             }
             if ($code === null) {
                 $issues[] = ['level' => 'blocking', 'text' => 'Working holiday maker: the ATO needs to know if your business is registered as a working holiday maker employer. We do not record that yet.'];
+            }
+            foreach ($untyped->get($l->id) ?? [] as $a) {
+                $issues[] = ['level' => 'blocking', 'text' => 'The allowance "' . $a->label . '" needs an ATO allowance type. Remove it and add it again with the type chosen.'];
             }
             if (!$hasTfn) {
                 $issues[] = ['level' => 'warning', 'text' => 'No tax file number. They are reported as not quoted, so ask them for a tax file number declaration.'];

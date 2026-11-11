@@ -156,7 +156,8 @@ class PayRunController extends Controller
             'clear_tax_override' => ['nullable', 'boolean'],
             'confirm_tax' => ['nullable', 'boolean'],
             'confirm_hours' => ['nullable', 'boolean'],
-        ]);
+            'payslip_note' => ['nullable', 'string', 'max:200'],
+        ], ['payslip_note.max' => 'Keep the message under 200 characters.']);
         if ($v->fails()) {
             return $this->failure('Please fix the highlighted fields.', 422, $v->errors()->toArray());
         }
@@ -171,6 +172,9 @@ class PayRunController extends Controller
             if (!$line->tax_overridden) {
                 $line->tax_confirmed = false; // the amount changed, so an earlier confirmation no longer applies
             }
+        }
+        if (array_key_exists('payslip_note', $request->all())) {
+            $line->payslip_note = trim((string) ($d['payslip_note'] ?? '')) ?: null;
         }
         if (!empty($d['clear_tax_override'])) {
             $line->tax_overridden = false;
@@ -214,11 +218,17 @@ class PayRunController extends Controller
             'rate' => ['required_if:kind,overtime', 'nullable', 'numeric', 'gt:0', 'max:9999.99', $this->twoDecimals('Rate')],
             'counts_for_super' => ['nullable', 'boolean'],
             'payee' => ['nullable', 'string', 'max:80'],
+            'allowance_type' => ['required_if:kind,allowance', 'nullable', Rule::in(array_keys(PayRunLineItem::ALLOWANCE_TYPES))],
+            'allowance_desc' => ['required_if:allowance_type,OD', 'nullable', Rule::in(array_keys(PayRunLineItem::ALLOWANCE_DESCRIPTIONS))],
         ], [
             'kind.required' => 'Choose the type of item.',
             'label.required' => 'Describe the item, for example "Phone allowance".',
             'label.max' => 'Keep the description under 60 characters.',
             'payee.max' => 'Keep the name under 80 characters.',
+            'allowance_type.required_if' => 'Choose the allowance type. The ATO needs it.',
+            'allowance_type.in' => 'Choose one of the listed allowance types.',
+            'allowance_desc.required_if' => 'Choose what the other allowance is for.',
+            'allowance_desc.in' => 'Choose one of the listed descriptions.',
             'amount.required_unless' => 'Enter an amount.',
             'amount.gt' => 'The amount must be more than 0.',
             'hours.required_if' => 'Enter the overtime hours.',
@@ -233,12 +243,14 @@ class PayRunController extends Controller
         $rate = $kind === 'overtime' ? (float) $d['rate'] : null;
         $amountC = $kind === 'overtime' ? Calc::hourlyGrossCents($this->cents($hours), $this->cents($rate)) : $this->cents($d['amount']);
         $super = in_array($kind, ['allowance', 'bonus'], true) ? (bool) ($d['counts_for_super'] ?? true) : false;
+        $aType = $kind === 'allowance' ? ($d['allowance_type'] ?? null) : null;
+        $aDesc = $aType === 'OD' ? ($d['allowance_desc'] ?? null) : null;
         $payee = $kind === 'deduction' && trim((string) ($d['payee'] ?? '')) !== '' ? trim($d['payee']) : null;
 
         try {
-            DB::transaction(function () use ($line, $run, $kind, $d, $hours, $rate, $amountC, $super, $payee) {
+            DB::transaction(function () use ($line, $run, $kind, $d, $hours, $rate, $amountC, $super, $payee, $aType, $aDesc) {
                 PayRunLineItem::create([
-                    'pay_run_line_id' => $line->id, 'kind' => $kind, 'label' => trim($d['label']), 'payee' => $payee,
+                    'pay_run_line_id' => $line->id, 'kind' => $kind, 'label' => trim($d['label']), 'payee' => $payee, 'allowance_type' => $aType, 'allowance_desc' => $aDesc,
                     'hours' => $hours, 'rate' => $rate, 'amount' => $amountC / 100, 'counts_for_super' => $super,
                 ]);
                 $this->recalc($line, $run, true);
@@ -648,6 +660,8 @@ class PayRunController extends Controller
                     'id' => $i->id, 'kind' => $i->kind, 'label' => $i->label,
                     'hours' => $i->hours !== null ? (float) $i->hours : null, 'rate' => $i->rate !== null ? (float) $i->rate : null,
                     'amount' => $this->money($i->amount), 'counts_for_super' => (bool) $i->counts_for_super, 'payee' => $i->payee,
+                    'allowance_type' => $i->allowance_type, 'allowance_desc' => $i->allowance_desc,
+                    'allowance_label' => $i->allowance_type ? (PayRunLineItem::ALLOWANCE_TYPES[$i->allowance_type] ?? $i->allowance_type) . ($i->allowance_desc ? ': ' . (PayRunLineItem::ALLOWANCE_DESCRIPTIONS[$i->allowance_desc] ?? $i->allowance_desc) : '') : null,
                 ])->values(),
                 'leave_available' => ($leaveToPay->get($l->employee_id) ?? collect())->map(fn ($q) => [
                     'id' => $q->id, 'type' => $leaveTypes[$q->leave_type_id] ?? 'Leave',
@@ -660,6 +674,7 @@ class PayRunController extends Controller
                 'tax_method' => $l->tax_method, 'tax_status' => $l->tax_status, 'tax_note' => $l->tax_note,
                 'tax_overridden' => (bool) $l->tax_overridden, 'tax_confirmed' => (bool) $l->tax_confirmed,
                 'super_fund_name' => $l->super_fund_name, 'super_member_number' => $l->super_member_number,
+                'payslip_note' => $l->payslip_note,
                 'ytd' => $ytd[$l->employee_id] ?? null,
                 'entitlements' => $entitled[$l->employee_id] ?? [],
                 'leave_taken' => $taken[$l->employee_id] ?? [],
