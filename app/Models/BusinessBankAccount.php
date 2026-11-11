@@ -8,9 +8,9 @@ class BusinessBankAccount extends Model
 {
     protected $table = 'business_bank_accounts';
 
-    protected $fillable = ['company_id', 'name', 'account_type', 'bsb', 'account_number', 'active', 'last_imported_at', 'feed_provider', 'feed_reference'];
+    protected $fillable = ['company_id', 'name', 'account_type', 'bsb', 'account_number', 'active', 'last_imported_at', 'feed_provider', 'feed_reference', 'feed_link_id', 'bank_balance', 'last_synced_at'];
 
-    protected $casts = ['active' => 'boolean', 'last_imported_at' => 'datetime'];
+    protected $casts = ['active' => 'boolean', 'last_imported_at' => 'datetime', 'last_synced_at' => 'datetime', 'bank_balance' => 'float'];
 
     public const TYPES = ['everyday' => 'Everyday', 'savings' => 'Savings', 'credit_card' => 'Credit card'];
 

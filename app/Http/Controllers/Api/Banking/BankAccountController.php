@@ -31,6 +31,9 @@ class BankAccountController extends Controller
             'last_imported_at' => optional($a->last_imported_at)->toDateString(),
             'to_review' => $counts[$a->id] ?? 0,
             'feed_connected' => (bool) $a->feed_provider,
+            'feed_link_id' => $a->feed_link_id,
+            'bank_balance' => $a->bank_balance,
+            'last_synced_at' => optional($a->last_synced_at)->toIso8601String(),
         ];
     }
 

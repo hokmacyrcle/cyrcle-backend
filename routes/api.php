@@ -283,6 +283,15 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
         Route::get('/accounts/{id}/transactions', [$txn, 'index'])->whereNumber('id');
         Route::get('/transactions', [$txn, 'all']);
         Route::get('/summary', [$txn, 'summary']);
+
+        $feed = App\Http\Controllers\Api\Banking\BankFeedController::class;
+        Route::get('/feed/status', [$feed, 'status']);
+        Route::get('/feed/institutions', [$feed, 'institutions']);
+        Route::post('/feed/start', [$feed, 'start']);
+        Route::get('/feed/links/{id}/accounts', [$feed, 'accounts'])->whereNumber('id');
+        Route::post('/feed/links/{id}/connect', [$feed, 'connect'])->whereNumber('id');
+        Route::delete('/feed/links/{id}', [$feed, 'disconnect'])->whereNumber('id');
+        Route::post('/feed/accounts/{id}/sync', [$feed, 'sync'])->whereNumber('id');
         Route::post('/transactions/{id}/status', [$txn, 'setStatus'])->whereNumber('id');
     });
 
