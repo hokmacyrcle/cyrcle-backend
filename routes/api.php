@@ -295,6 +295,25 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
         Route::post('/feed/accounts/{id}/sync', [$feed, 'sync'])->whereNumber('id');
         Route::post('/transactions/{id}/status', [$txn, 'setStatus'])->whereNumber('id');
         Route::post('/transactions/bulk-status', [$txn, 'bulkStatus']);
+
+        $rec = App\Http\Controllers\Api\Banking\ReconcileController::class;
+        Route::get('/reconcile/{accountId}', [$rec, 'start'])->whereNumber('accountId');
+        Route::get('/reconcile/{accountId}/lines', [$rec, 'lines'])->whereNumber('accountId');
+        Route::post('/reconcile/{accountId}', [$rec, 'finish'])->whereNumber('accountId');
+        Route::delete('/reconcile/{id}', [$rec, 'undo'])->whereNumber('id');
+
+        $chart = App\Http\Controllers\Api\Banking\ChartAccountController::class;
+        Route::get('/chart-accounts', [$chart, 'index']);
+        Route::post('/chart-accounts', [$chart, 'store']);
+        Route::put('/chart-accounts/{id}', [$chart, 'update'])->whereNumber('id');
+        Route::post('/chart-accounts/{id}/archive', [$chart, 'archive'])->whereNumber('id');
+
+        $rcp = App\Http\Controllers\Api\Banking\BankReceiptController::class;
+        Route::get('/receipts', [$rcp, 'index']);
+        Route::post('/receipts', [$rcp, 'store']);
+        Route::get('/receipts/{id}/file', [$rcp, 'view'])->whereNumber('id');
+        Route::put('/receipts/{id}', [$rcp, 'update'])->whereNumber('id');
+        Route::delete('/receipts/{id}', [$rcp, 'destroy'])->whereNumber('id');
     });
 
     Route::prefix('sales')->group(function () {

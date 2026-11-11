@@ -168,12 +168,15 @@ class BankTransactionController extends Controller
         if ($t->status === 'done') {
             return $this->failure('This transaction is already done. Undo the match first.');
         }
+        if ($t->reconciliation_id) {
+            return $this->failure('This transaction has been reconciled. Undo that reconciliation first.');
+        }
         $t->status = $to;
         $t->save();
         return response()->json(['data' => $this->row($t), 'message' => $to === 'excluded' ? 'Excluded.' : 'Back in review.']);
     }
 
-    /** Exclude or put back several lines at once. Lines that are already done are left alone. */
+    /** Exclude or put back several lines at once. Lines that are already done or reconciled are left alone. */
     public function bulkStatus(Request $request): JsonResponse
     {
         if (!$b = $this->business()) {
@@ -185,7 +188,7 @@ class BankTransactionController extends Controller
             return $this->failure('Choose the lines and whether to exclude them or put them back.', 422);
         }
         $changed = BankTransaction::where('company_id', $b->company_id)->whereIn('id', array_slice($ids, 0, 500))
-            ->where('status', '!=', 'done')->where('status', '!=', $to)->update(['status' => $to, 'updated_at' => now()]);
+            ->whereNull('reconciliation_id')->where('status', '!=', 'done')->where('status', '!=', $to)->update(['status' => $to, 'updated_at' => now()]);
         return response()->json(['data' => ['changed' => $changed],
             'message' => $changed . ' transaction' . ($changed === 1 ? '' : 's') . ($to === 'excluded' ? ' excluded.' : ' put back.')]);
     }

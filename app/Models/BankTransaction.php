@@ -10,7 +10,7 @@ class BankTransaction extends Model
 
     protected $fillable = [
         'company_id', 'bank_account_id', 'import_id', 'txn_date', 'description', 'amount', 'balance_after', 'status',
-        'matched_invoice_id', 'invoice_payment_id', 'category_account_id', 'gst_code', 'note', 'fingerprint', 'source',
+        'matched_invoice_id', 'invoice_payment_id', 'category_account_id', 'gst_code', 'note', 'fingerprint', 'source', 'reconciliation_id',
     ];
 
     protected $casts = ['txn_date' => 'date', 'amount' => 'decimal:2', 'balance_after' => 'decimal:2'];

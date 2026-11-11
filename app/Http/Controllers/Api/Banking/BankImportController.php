@@ -137,7 +137,7 @@ class BankImportController extends Controller
         if (!$imp) {
             return $this->failure('Import not found.', 404);
         }
-        $removed = BankTransaction::where('company_id', $b->company_id)->where('import_id', $id)->where('status', 'review')->delete();
+        $removed = BankTransaction::where('company_id', $b->company_id)->where('import_id', $id)->where('status', 'review')->whereNull('reconciliation_id')->delete();
         return response()->json(['message' => $removed . ' unreviewed transaction' . ($removed === 1 ? '' : 's') . ' removed.']);
     }
 }
