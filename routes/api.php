@@ -3,7 +3,6 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-use App\Http\Controllers\Api\Employees\EmployeeLeaveController;
 use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\CompanyController;
@@ -239,6 +238,16 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
         Route::post('/employees/{id}/archive', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'setArchived'])->whereNumber('id');
         Route::post('/pay-runs/{id}/lines/{lineId}/items', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'addItem'])->whereNumber('id')->whereNumber('lineId');
         Route::delete('/pay-runs/{id}/lines/{lineId}/items/{itemId}', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'removeItem'])->whereNumber('id')->whereNumber('lineId')->whereNumber('itemId');
+        Route::post('/pay-runs/{id}/lines/{lineId}/leave', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'addLeave'])->whereNumber('id')->whereNumber('lineId');
+        Route::get('/leave', [App\Http\Controllers\Api\Payroll\LeaveController::class, 'index']);
+        Route::put('/leave/types/{id}', [App\Http\Controllers\Api\Payroll\LeaveController::class, 'updateType'])->whereNumber('id');
+        Route::get('/leave/requests', [App\Http\Controllers\Api\Payroll\LeaveController::class, 'requests']);
+        Route::post('/leave/requests', [App\Http\Controllers\Api\Payroll\LeaveController::class, 'storeRequest']);
+        Route::post('/leave/requests/{id}/approve', [App\Http\Controllers\Api\Payroll\LeaveController::class, 'approve'])->whereNumber('id');
+        Route::post('/leave/requests/{id}/decline', [App\Http\Controllers\Api\Payroll\LeaveController::class, 'decline'])->whereNumber('id');
+        Route::delete('/leave/requests/{id}', [App\Http\Controllers\Api\Payroll\LeaveController::class, 'destroy'])->whereNumber('id');
+        Route::post('/leave/adjustments', [App\Http\Controllers\Api\Payroll\LeaveController::class, 'adjust']);
+        Route::get('/leave/employees/{employeeId}/ledger', [App\Http\Controllers\Api\Payroll\LeaveController::class, 'ledger'])->whereNumber('employeeId');
         Route::get('/timesheets', [App\Http\Controllers\Api\Payroll\TimesheetController::class, 'index']);
         Route::put('/timesheets/{employeeId}', [App\Http\Controllers\Api\Payroll\TimesheetController::class, 'save'])->whereNumber('employeeId');
         Route::post('/timesheets/{employeeId}/approve', [App\Http\Controllers\Api\Payroll\TimesheetController::class, 'approve'])->whereNumber('employeeId');
@@ -353,24 +362,6 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
 
 
     
-    // Leave Requests
-    Route::get('/leave-requests', [EmployeeLeaveController::class, 'index']);
-    Route::get('/leave-requests/{leaveRequestId}', [EmployeeLeaveController::class, 'showLeave']);
-    Route::post('/leave-requests', [EmployeeLeaveController::class, 'store']);
-    Route::post('/leave-requests/{leaveRequestId}/approve', [EmployeeLeaveController::class, 'approveLeave']);
-    Route::post('/leave-requests/{leaveRequestId}/reject', [EmployeeLeaveController::class, 'rejectLeave']);
-
-    // Assign Leave Type Management
-    Route::post('/assign-leave-type', [EmployeeLeaveController::class, 'assignLeaveType']);
-    Route::get('/assign-leave-type/{id}', [EmployeeLeaveController::class, 'showAssignLeaveType']);
-    Route::get('/employees/{employeeId}/assign-leave-types', [EmployeeLeaveController::class, 'getEmployeeAssignLeaveTypes']);
-    Route::put('/assign-leave-type/{id}', [EmployeeLeaveController::class, 'updateAssignLeaveType']);
-    Route::delete('/assign-leave-type/{id}', [EmployeeLeaveController::class, 'deleteAssignLeaveType']);
-    Route::get('/leave-type-dropdowns', [EmployeeLeaveController::class, 'getLeaveTypeDropdowns']);
-    Route::get('/employees/{employeeId}/available-leave-types', [EmployeeLeaveController::class, 'getAvailableLeaveTypesForEmployee']);
-    Route::get('/employees/{employeeId}/leave-balances', [EmployeeLeaveController::class, 'getEmployeeLeaveBalances']);
-    Route::get('/employees/{employeeId}/leave-types/{leaveTypeId}/pay-period-hours', [EmployeeLeaveController::class, 'getPayPeriodHours']);
-
     // Accounts Management
     Route::post('/accounts', [AccountController::class, 'store']);
     Route::get('/accounts/{accountId}', [AccountController::class, 'getAccountById']);

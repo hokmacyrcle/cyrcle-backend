@@ -36,7 +36,6 @@ class DatabaseSeeder extends Seeder
             InvoiceItemSeeder::class,
             InvoiceTransactionSeeder::class,
             DropdownSeeder::class,
-            EmpAssignLeaveTypeSeeder::class,
         ]);
     }
 }

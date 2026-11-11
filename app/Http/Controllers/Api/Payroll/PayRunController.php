@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Api\Sales\Concerns\SalesSupport;
 use App\Models\Employee;
 use App\Models\EmploymentInformation;
+use App\Models\LeaveType;
 use App\Models\PayRun;
 use App\Models\PayRunLine;
 use App\Models\PayRunLineItem;
@@ -13,6 +14,7 @@ use App\Models\PayrollSetting;
 use App\Models\SuperannuationFund;
 use App\Models\TaxDetail;
 use App\Services\Payroll\PayCalculator as Calc;
+use App\Services\Payroll\LeaveService;
 use App\Services\Payroll\TimesheetHours;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -242,6 +244,44 @@ class PayRunController extends Controller
         return response()->json(['data' => $this->full($run->fresh(), $b)], 201);
     }
 
+    /** Puts an employee's approved leave on this pay run as a taxable "leave" item. Only hourly staff need this. */
+    public function addLeave(Request $request, int $id, int $lineId): JsonResponse
+    {
+        if (!$b = $this->business()) {
+            return $this->noBusiness();
+        }
+        [$run, $line] = $this->findLine($b->company_id, $id, $lineId);
+        if (!$run) {
+            return $this->failure('Pay run not found.', 404);
+        }
+        if ($run->status !== 'draft') {
+            return $this->failure('This pay run is finalised and can no longer be changed.', 422);
+        }
+        if ($line->pay_basis !== 'hourly' || $line->hourly_rate === null) {
+            return $this->failure('Salaried staff are paid their salary while on leave, so there is nothing to add.', 422);
+        }
+        $req = LeaveService::unpaidApproved($b->company_id, [$line->employee_id])->firstWhere('id', (int) $request->input('request_id'));
+        if (!$req) {
+            return $this->failure('That leave is not available to pay. It may already be on a pay run.', 422);
+        }
+        $type = LeaveType::find($req->leave_type_id);
+        $hoursH = LeaveService::hundredths($req->hours);
+        $amountC = Calc::hourlyGrossCents($hoursH, $this->cents($line->hourly_rate));
+        $label = mb_substr($type->name . ' ' . $req->start_date->format('j M') . ($req->end_date->ne($req->start_date) ? ' to ' . $req->end_date->format('j M') : ''), 0, 60);
+        try {
+            DB::transaction(function () use ($line, $run, $req, $label, $hoursH, $amountC) {
+                PayRunLineItem::create([
+                    'pay_run_line_id' => $line->id, 'kind' => 'leave', 'label' => $label, 'hours' => $hoursH / 100,
+                    'rate' => $line->hourly_rate, 'amount' => $amountC / 100, 'counts_for_super' => true, 'source_id' => $req->id,
+                ]);
+                $this->recalc($line, $run, true);
+            });
+        } catch (\DomainException $e) {
+            return $this->failure($e->getMessage(), 422);
+        }
+        return response()->json(['data' => $this->full($run->fresh(), $b)], 201);
+    }
+
     public function removeItem(int $id, int $lineId, int $itemId): JsonResponse
     {
         if (!$b = $this->business()) {
@@ -290,6 +330,7 @@ class PayRunController extends Controller
         if ($run->status !== 'draft') {
             return $this->failure('This pay run is finalised and can no longer be changed.', 422);
         }
+        PayRunLineItem::where('pay_run_line_id', $line->id)->delete();
         $line->delete();
         $this->totals($run);
         return response()->json(['data' => $this->full($run->fresh(), $b)]);
@@ -333,6 +374,7 @@ class PayRunController extends Controller
             'status' => 'finalised', 'finalised_at' => now(),
             'super_due_date' => $this->addBusinessDays(Carbon::parse($run->pay_date), 7)->toDateString(),
         ])->save();
+        LeaveService::accrueForRun($run->fresh());   // staff build up leave from the hours in this run
         return response()->json(['data' => $this->full($run->fresh(), $b)]);
         });
     }
@@ -367,6 +409,7 @@ class PayRunController extends Controller
             return $this->failure('A finalised pay run is a payroll record and cannot be deleted.', 422);
         }
         DB::transaction(function () use ($run) {
+            PayRunLineItem::whereIn('pay_run_line_id', PayRunLine::where('pay_run_id', $run->id)->select('id'))->delete();
             PayRunLine::where('pay_run_id', $run->id)->delete();
             $run->delete();
         });
@@ -560,6 +603,8 @@ class PayRunController extends Controller
         $draft = $r->status === 'draft';
         $items = PayRunLineItem::whereIn('pay_run_line_id', $lines->pluck('id'))->orderBy('id')->get()->groupBy('pay_run_line_id');
         $ytd = $draft ? [] : $this->yearToDate($r);
+        $leaveTypes = $draft ? LeaveType::where('company_id', $r->company_id)->pluck('name', 'id') : collect();
+        $leaveToPay = $draft ? LeaveService::unpaidApproved($r->company_id, $lines->where('pay_basis', 'hourly')->pluck('employee_id'))->groupBy('employee_id') : collect();
 
         return $this->row($r, $lines->count()) + [
             'super_due_date' => $r->super_due_date?->toDateString(),
@@ -579,6 +624,11 @@ class PayRunController extends Controller
                     'id' => $i->id, 'kind' => $i->kind, 'label' => $i->label,
                     'hours' => $i->hours !== null ? (float) $i->hours : null, 'rate' => $i->rate !== null ? (float) $i->rate : null,
                     'amount' => $this->money($i->amount), 'counts_for_super' => (bool) $i->counts_for_super,
+                ])->values(),
+                'leave_available' => ($leaveToPay->get($l->employee_id) ?? collect())->map(fn ($q) => [
+                    'id' => $q->id, 'type' => $leaveTypes[$q->leave_type_id] ?? 'Leave',
+                    'start_date' => $q->start_date->toDateString(), 'end_date' => $q->end_date->toDateString(), 'hours' => (float) $q->hours,
+                    'amount' => $this->money(Calc::hourlyGrossCents(LeaveService::hundredths($q->hours), $this->cents($l->hourly_rate)) / 100),
                 ])->values(),
                 'hours_source' => $l->hours_source, 'hours_confirmed' => (bool) $l->hours_confirmed,
                 'gross' => $this->money($l->gross), 'tax' => $this->money($l->tax),
