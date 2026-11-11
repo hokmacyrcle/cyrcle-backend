@@ -312,6 +312,7 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
         Route::get('/receipts', [$rcp, 'index']);
         Route::post('/receipts', [$rcp, 'store']);
         Route::get('/receipts/{id}/file', [$rcp, 'view'])->whereNumber('id');
+        Route::post('/receipts/{id}/scan', [$rcp, 'scan'])->whereNumber('id');
         Route::put('/receipts/{id}', [$rcp, 'update'])->whereNumber('id');
         Route::delete('/receipts/{id}', [$rcp, 'destroy'])->whereNumber('id');
     });

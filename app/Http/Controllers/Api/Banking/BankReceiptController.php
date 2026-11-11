@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Sales\Concerns\SalesSupport;
 use App\Models\BankReceipt;
 use App\Models\BusinessBankAccount;
 use App\Models\User;
+use App\Services\Banking\ReceiptScanner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -40,6 +41,7 @@ class BankReceiptController extends Controller
             'gst' => $r->gst === null ? null : $this->money($r->gst),
             'account_id' => $r->bank_account_id,
             'account_name' => $r->bank_account_id ? ($accounts[$r->bank_account_id] ?? null) : null,
+            'scan_status' => $r->scan_status ?: 'none',
             'created_by' => $r->uploaded_by ? ($people[$r->uploaded_by] ?? null) : null,
             'created_at' => $r->created_at ? $r->created_at->toIso8601String() : null,
         ];
@@ -74,6 +76,7 @@ class BankReceiptController extends Controller
         return response()->json([
             'data' => collect($page->items())->map(fn ($r) => $this->row($r, $accounts, $people))->all(),
             'meta' => ['page' => $page->currentPage(), 'per_page' => $page->perPage(), 'total' => $page->total(), 'last_page' => $page->lastPage()],
+            'scan_available' => ReceiptScanner::configured(),
         ]);
     }
 
@@ -153,6 +156,52 @@ class BankReceiptController extends Controller
         [$accounts, $people] = $this->names([$r]);
 
         return response()->json(['data' => $this->row($r->fresh(), $accounts, $people), 'message' => 'Receipt saved.']);
+    }
+
+    /**
+     * Read the receipt with Claude and fill in the details that are still empty.
+     * Details a person already typed are never replaced.
+     */
+    public function scan($id): JsonResponse
+    {
+        if (!$b = $this->business()) {
+            return $this->noBusiness();
+        }
+        if (!$r = $this->find($b, $id)) {
+            return $this->failure('Receipt not found.', 404);
+        }
+        if (!ReceiptScanner::configured()) {
+            return $this->failure('Reading receipts automatically is not switched on yet. Please fill in the details by hand.', 503);
+        }
+        if (!ReceiptScanner::canRead($r->mime, (int) $r->size)) {
+            return $this->failure('This kind of file cannot be read automatically. Please fill in the details by hand.', 422);
+        }
+        $disk = Storage::disk('local');
+        if (!$disk->exists($r->file_path)) {
+            return $this->failure('That receipt file is not available.', 404);
+        }
+        $found = (new ReceiptScanner())->scan($disk->get($r->file_path), $r->mime);
+        if ($found === null) {
+            $r->update(['scan_status' => 'failed']);
+            return $this->failure('We could not read that receipt. Please fill in the details by hand.', 422);
+        }
+        $fill = ['scan_status' => 'done'];
+        if (($r->description === null || $r->description === '') && $found['description'] !== null) {
+            $fill['description'] = $found['description'];
+        }
+        if ($r->receipt_date === null && $found['date'] !== null) {
+            $fill['receipt_date'] = $found['date'];
+        }
+        if ($r->amount === null && $found['amount'] !== null) {
+            $fill['amount'] = $found['amount'];
+        }
+        if ($r->gst === null && $found['gst'] !== null) {
+            $fill['gst'] = $found['gst'];
+        }
+        $r->update($fill);
+        [$accounts, $people] = $this->names([$r]);
+
+        return response()->json(['data' => $this->row($r->fresh(), $accounts, $people), 'message' => 'Receipt read. Please check the details.']);
     }
 
     /** Send the file itself, for viewing in the browser. */
