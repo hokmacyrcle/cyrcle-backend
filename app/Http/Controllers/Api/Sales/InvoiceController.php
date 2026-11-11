@@ -129,6 +129,7 @@ class InvoiceController extends Controller
             'total' => $this->money($i->invoice_total),
             'amount_due' => $status === 'void' ? 0.0 : $this->money(max(0, $i->invoice_total - $i->invoice_paid_amount)),
             'status' => $status,
+            'recurring' => (bool) $i->recurring_invoice_id,
         ];
     }
 
@@ -171,6 +172,7 @@ class InvoiceController extends Controller
             'title' => $isTax ? 'Tax invoice' : 'Invoice',
             'number' => $i->invoice_number ?: ('#' . $i->invoice_id),
             'status' => $status,
+            'recurring' => (bool) $i->recurring_invoice_id,
             'reference' => $i->reference,
             'issue_date' => optional($i->invoice_date)->toDateString(),
             'due_date' => optional($i->invoice_due_date)->toDateString(),

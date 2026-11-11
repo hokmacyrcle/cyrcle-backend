@@ -283,6 +283,11 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
         Route::post('/invoices/{id}/payments', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'addPayment'])->whereNumber('id');
         Route::delete('/invoices/{id}/payments/{transactionId}', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'removePayment'])->whereNumber('id')->whereNumber('transactionId');
 
+        Route::get('/recurring-invoices', [App\Http\Controllers\Api\Sales\RecurringInvoiceController::class, 'index']);
+        Route::post('/recurring-invoices', [App\Http\Controllers\Api\Sales\RecurringInvoiceController::class, 'store']);
+        Route::put('/recurring-invoices/{id}', [App\Http\Controllers\Api\Sales\RecurringInvoiceController::class, 'update'])->whereNumber('id');
+        Route::delete('/recurring-invoices/{id}', [App\Http\Controllers\Api\Sales\RecurringInvoiceController::class, 'destroy'])->whereNumber('id');
+
         Route::get('/quotes', [App\Http\Controllers\Api\Sales\QuoteController::class, 'index']);
         Route::post('/quotes', [App\Http\Controllers\Api\Sales\QuoteController::class, 'store']);
         Route::get('/quotes/{id}', [App\Http\Controllers\Api\Sales\QuoteController::class, 'show'])->whereNumber('id');
