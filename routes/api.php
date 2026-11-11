@@ -269,6 +269,21 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
         Route::delete('/pay-runs/{id}/lines/{lineId}', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'destroyLine'])->whereNumber('id')->whereNumber('lineId');
     });
 
+    Route::prefix('banking')->group(function () {
+        $acct = App\Http\Controllers\Api\Banking\BankAccountController::class;
+        $imp = App\Http\Controllers\Api\Banking\BankImportController::class;
+        $txn = App\Http\Controllers\Api\Banking\BankTransactionController::class;
+        Route::get('/accounts', [$acct, 'index']);
+        Route::post('/accounts', [$acct, 'store']);
+        Route::put('/accounts/{id}', [$acct, 'update'])->whereNumber('id');
+        Route::post('/accounts/{id}/archive', [$acct, 'archive'])->whereNumber('id');
+        Route::post('/accounts/{id}/import/preview', [$imp, 'preview'])->whereNumber('id');
+        Route::post('/accounts/{id}/import', [$imp, 'store'])->whereNumber('id');
+        Route::delete('/imports/{id}', [$imp, 'undo'])->whereNumber('id');
+        Route::get('/accounts/{id}/transactions', [$txn, 'index'])->whereNumber('id');
+        Route::post('/transactions/{id}/status', [$txn, 'setStatus'])->whereNumber('id');
+    });
+
     Route::prefix('sales')->group(function () {
         Route::get('/firm/overdue', [App\Http\Controllers\Api\Sales\FirmOverdueController::class, 'show']);
         Route::get('/summary', [App\Http\Controllers\Api\Sales\SummaryController::class, 'show']);
