@@ -213,10 +213,12 @@ class PayRunController extends Controller
             'hours' => ['required_if:kind,overtime', 'nullable', 'numeric', 'gt:0', 'max:744', $this->twoDecimals('Hours')],
             'rate' => ['required_if:kind,overtime', 'nullable', 'numeric', 'gt:0', 'max:9999.99', $this->twoDecimals('Rate')],
             'counts_for_super' => ['nullable', 'boolean'],
+            'payee' => ['nullable', 'string', 'max:80'],
         ], [
             'kind.required' => 'Choose the type of item.',
             'label.required' => 'Describe the item, for example "Phone allowance".',
             'label.max' => 'Keep the description under 60 characters.',
+            'payee.max' => 'Keep the name under 80 characters.',
             'amount.required_unless' => 'Enter an amount.',
             'amount.gt' => 'The amount must be more than 0.',
             'hours.required_if' => 'Enter the overtime hours.',
@@ -231,11 +233,12 @@ class PayRunController extends Controller
         $rate = $kind === 'overtime' ? (float) $d['rate'] : null;
         $amountC = $kind === 'overtime' ? Calc::hourlyGrossCents($this->cents($hours), $this->cents($rate)) : $this->cents($d['amount']);
         $super = in_array($kind, ['allowance', 'bonus'], true) ? (bool) ($d['counts_for_super'] ?? true) : false;
+        $payee = $kind === 'deduction' && trim((string) ($d['payee'] ?? '')) !== '' ? trim($d['payee']) : null;
 
         try {
-            DB::transaction(function () use ($line, $run, $kind, $d, $hours, $rate, $amountC, $super) {
+            DB::transaction(function () use ($line, $run, $kind, $d, $hours, $rate, $amountC, $super, $payee) {
                 PayRunLineItem::create([
-                    'pay_run_line_id' => $line->id, 'kind' => $kind, 'label' => trim($d['label']),
+                    'pay_run_line_id' => $line->id, 'kind' => $kind, 'label' => trim($d['label']), 'payee' => $payee,
                     'hours' => $hours, 'rate' => $rate, 'amount' => $amountC / 100, 'counts_for_super' => $super,
                 ]);
                 $this->recalc($line, $run, true);
@@ -634,7 +637,7 @@ class PayRunController extends Controller
                 'items' => ($items->get($l->id) ?? collect())->map(fn ($i) => [
                     'id' => $i->id, 'kind' => $i->kind, 'label' => $i->label,
                     'hours' => $i->hours !== null ? (float) $i->hours : null, 'rate' => $i->rate !== null ? (float) $i->rate : null,
-                    'amount' => $this->money($i->amount), 'counts_for_super' => (bool) $i->counts_for_super,
+                    'amount' => $this->money($i->amount), 'counts_for_super' => (bool) $i->counts_for_super, 'payee' => $i->payee,
                 ])->values(),
                 'leave_available' => ($leaveToPay->get($l->employee_id) ?? collect())->map(fn ($q) => [
                     'id' => $q->id, 'type' => $leaveTypes[$q->leave_type_id] ?? 'Leave',
