@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Api\Sales\Concerns\SalesSupport;
 use App\Models\BankAccount;
 use App\Models\Employee;
+use App\Models\PayrollSetting;
 use App\Models\EmploymentInformation;
 use App\Models\SuperannuationFund;
 use App\Models\TaxDetail;
@@ -26,7 +27,6 @@ class EmployeeController extends Controller
     use SalesSupport;
 
     /** Legislated super guarantee rate (from 1 July 2025). */
-    private const SUPER_RATE = 12.00;
 
     private const STATES = ['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'];
     private const BASES = ['Full-time', 'Part-time', 'Casual', 'Fixed-term'];
@@ -292,7 +292,7 @@ class EmployeeController extends Controller
                 'member_number' => $v['super_member_number'],
                 'contribution_type' => 'statutory_rate',
                 'is_statutory_rate' => true,
-                'contribution_value' => self::SUPER_RATE,
+                'contribution_value' => PayrollSetting::forCompany((int) $e->emp_company_id)['super_rate'],
                 'status' => 'active',
             ])->save();
         } else {
@@ -387,7 +387,7 @@ class EmployeeController extends Controller
             'bank' => $bank ? [
                 'account_name' => $bank->account_name, 'bsb' => $bank->bsb_number, 'account_number' => $bank->account_number,
             ] : null,
-            'super_rate' => self::SUPER_RATE,
+            'super_rate' => PayrollSetting::forCompany((int) $e->emp_company_id)['super_rate'],
         ];
     }
 }

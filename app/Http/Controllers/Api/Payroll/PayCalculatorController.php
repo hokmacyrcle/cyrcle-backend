@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Payroll;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Api\Sales\Concerns\SalesSupport;
+use App\Models\PayrollSetting;
 use App\Services\Payroll\PayCalculator as Calc;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -38,6 +39,8 @@ class PayCalculatorController extends Controller
             return $this->failure('Please fix the highlighted fields.', 422, $v->errors()->toArray());
         }
         $d = $v->validated();
+        $company = $this->business();
+        $rate = $company ? PayrollSetting::rateHundredths((int) $company->company_id) : Calc::SUPER_RATE_HUNDREDTHS;
         $f = $d['frequency'];
         $amountC = (int) round(((float) $d['amount']) * 100);
 
@@ -57,7 +60,8 @@ class PayCalculatorController extends Controller
         return response()->json(['data' => [
             'gross' => $grossC / 100,
             'tax' => $taxC / 100,
-            'super' => Calc::superCents($grossC) / 100,
+            'super' => Calc::superCents($grossC, $rate) / 100,
+            'super_rate' => $rate / 100,
             'net' => ($grossC - $taxC) / 100,
             'situation_label' => $label,
             'frequency' => $f,

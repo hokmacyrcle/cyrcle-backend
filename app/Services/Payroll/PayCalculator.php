@@ -110,13 +110,13 @@ class PayCalculator
         return 0;
     }
 
-    /** Super guarantee on ordinary earnings, to the cent (half up). */
-    public static function superCents(int $earningsCents): int
+    /** Super on ordinary earnings, to the cent (half up). The rate is in hundredths of a percent (1200 = 12.00%). */
+    public static function superCents(int $earningsCents, int $rateHundredths = self::SUPER_RATE_HUNDREDTHS): int
     {
         if ($earningsCents <= 0) {
             return 0;
         }
-        return intdiv($earningsCents * self::SUPER_RATE_HUNDREDTHS * 2 + 10000, 20000);
+        return intdiv($earningsCents * $rateHundredths * 2 + 10000, 20000);
     }
 
     /** Gross for one pay period from a yearly salary, to the cent (half up). */

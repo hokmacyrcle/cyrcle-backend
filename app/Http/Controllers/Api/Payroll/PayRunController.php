@@ -8,6 +8,7 @@ use App\Models\Employee;
 use App\Models\EmploymentInformation;
 use App\Models\PayRun;
 use App\Models\PayRunLine;
+use App\Models\PayrollSetting;
 use App\Models\SuperannuationFund;
 use App\Models\TaxDetail;
 use App\Services\Payroll\PayCalculator as Calc;
@@ -106,7 +107,7 @@ class PayRunController extends Controller
                 'reference' => $this->nextNumber('pay_runs', 'reference', (int) $b->company_id, 'PR'),
                 'frequency' => $d['frequency'],
                 'period_start' => $d['period_start'], 'period_end' => $d['period_end'], 'pay_date' => $d['pay_date'],
-                'status' => 'draft', 'created_by' => auth()->guard('api')->id(),
+                'status' => 'draft', 'super_rate' => PayrollSetting::forCompany((int) $b->company_id)['super_rate'], 'created_by' => auth()->guard('api')->id(),
             ]);
             foreach ($included as $e) {
                 $j = $jobs->get($e->emp_id);
@@ -118,7 +119,7 @@ class PayRunController extends Controller
                     'hours' => $j->pay_basis === 'hourly' ? $this->defaultHours($j, $d['frequency']) : null,
                     'super_fund_name' => $fund?->fund_name, 'super_member_number' => $fund?->member_number,
                 ]);
-                $this->calculate($line, $run->frequency);
+                $this->calculate($line, $run->frequency, (int) round(((float) $run->super_rate) * 100));
                 $line->save();
             }
             $this->totals($run);
@@ -171,7 +172,7 @@ class PayRunController extends Controller
         if (!empty($d['confirm_tax'])) {
             $line->tax_confirmed = true;
         }
-        $this->calculate($line, $run->frequency);
+        $this->calculate($line, $run->frequency, (int) round(((float) $run->super_rate) * 100));
         $line->save();
         $this->totals($run);
         return response()->json(['data' => $this->full($run->fresh(), $b)]);
@@ -271,7 +272,7 @@ class PayRunController extends Controller
     }
 
     /** Works out gross, tax, super and net for a line, and says whether the tax needs a person's check. */
-    private function calculate(PayRunLine $l, string $freq): void
+    private function calculate(PayRunLine $l, string $freq, int $rateHundredths): void
     {
         $grossC = 0;
         if ($l->pay_basis === 'salary') {
@@ -316,7 +317,7 @@ class PayRunController extends Controller
         $l->tax_method = $method;
         $l->tax_status = $status;
         $l->tax_note = $note;
-        $l->super_amount = Calc::superCents($grossC) / 100;
+        $l->super_amount = Calc::superCents($grossC, $rateHundredths) / 100;
         $l->net = ($grossC - $taxC) / 100;
     }
 
@@ -369,11 +370,12 @@ class PayRunController extends Controller
         $lines = PayRunLine::where('pay_run_id', $r->id)->orderBy('employee_name')->get();
         $needs = $lines->filter(fn ($l) => ($l->pay_basis === 'hourly' && $l->hours === null) || ($l->tax_status !== 'auto' && !$l->tax_confirmed))->count();
         $draft = $r->status === 'draft';
+        $ytd = $draft ? [] : $this->yearToDate($r);
 
         return $this->row($r, $lines->count()) + [
             'super_due_date' => $r->super_due_date?->toDateString(),
             'finalised_at' => $r->finalised_at?->toIso8601String(),
-            'employer' => $this->presentSeller($business),
+            'employer' => $this->presentSeller($business), 'super_rate' => (float) $r->super_rate,
             'needs_attention' => $needs,
             'can' => ['edit' => $draft, 'finalise' => $draft && $lines->count() > 0, 'delete' => $draft],
             'lines' => $lines->map(fn (PayRunLine $l) => [
@@ -387,7 +389,35 @@ class PayRunController extends Controller
                 'tax_method' => $l->tax_method, 'tax_status' => $l->tax_status, 'tax_note' => $l->tax_note,
                 'tax_overridden' => (bool) $l->tax_overridden, 'tax_confirmed' => (bool) $l->tax_confirmed,
                 'super_fund_name' => $l->super_fund_name, 'super_member_number' => $l->super_member_number,
+                'ytd' => $ytd[$l->employee_id] ?? null,
             ])->values(),
         ];
+    }
+
+    /**
+     * Totals so far in this financial year (1 July to 30 June) for each employee in a finalised run,
+     * up to and including this run. Only finalised runs count.
+     */
+    private function yearToDate(PayRun $r): array
+    {
+        $pay = Carbon::parse($r->pay_date);
+        $fyStart = Carbon::create($pay->month >= 7 ? $pay->year : $pay->year - 1, 7, 1)->toDateString();
+        $ids = PayRunLine::where('pay_run_id', $r->id)->pluck('employee_id');
+        $rows = DB::table('pay_run_lines as l')->join('pay_runs as x', 'x.id', '=', 'l.pay_run_id')
+            ->where('x.company_id', $r->company_id)->where('x.status', 'finalised')->whereIn('l.employee_id', $ids)
+            ->whereDate('x.pay_date', '>=', $fyStart)
+            ->where(function ($q) use ($r) {
+                $q->whereDate('x.pay_date', '<', $r->pay_date->toDateString())
+                  ->orWhere(fn ($q2) => $q2->whereDate('x.pay_date', $r->pay_date->toDateString())->where('x.id', '<=', $r->id));
+            })->get(['l.employee_id', 'l.gross', 'l.tax', 'l.super_amount', 'l.net']);
+        $out = [];
+        foreach ($rows as $x) {
+            $o = &$out[$x->employee_id];
+            $o ??= ['gross' => 0, 'tax' => 0, 'super' => 0, 'net' => 0];
+            $o['gross'] += $this->cents($x->gross); $o['tax'] += $this->cents($x->tax);
+            $o['super'] += $this->cents($x->super_amount); $o['net'] += $this->cents($x->net);
+            unset($o);
+        }
+        return array_map(fn ($o) => array_map(fn ($v) => $v / 100, $o), $out);
     }
 }
