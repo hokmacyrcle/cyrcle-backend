@@ -11,6 +11,7 @@ use App\Models\EmploymentInformation;
 use App\Models\SuperannuationFund;
 use App\Models\TaxDetail;
 use App\Rules\ValidTfn;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -113,6 +114,12 @@ class EmployeeController extends Controller
         return response()->json(['data' => $this->full($e->fresh())]);
     }
 
+    /** ATO cessation reason codes used in Single Touch Payroll. */
+    public const CESSATION_REASONS = [
+        'V' => 'Resigned or left by choice', 'I' => 'Ill health', 'D' => 'Deceased', 'R' => 'Redundancy',
+        'F' => 'Dismissed', 'C' => 'Contract ended', 'T' => 'Transferred to another employer',
+    ];
+
     /** Archive (inactive) or bring back an employee. Records are never deleted: pay history must stay. */
     public function setArchived(Request $request, int $id): JsonResponse
     {
@@ -124,7 +131,30 @@ class EmployeeController extends Controller
             return $this->failure('Employee not found.', 404);
         }
         $archive = $request->boolean('archived');
-        $e->forceFill(['emp_status' => $archive ? 'Inactive' : 'Active'])->save();
+        if (!$archive) {
+            $e->forceFill(['emp_status' => 'Active', 'emp_last_working_date' => null, 'emp_cessation_reason' => null])->save();
+            return response()->json(['data' => $this->full($e->fresh())]);
+        }
+        // Leaving: the ATO needs the last day worked and why employment ended.
+        $v = Validator::make($request->all(), [
+            'last_day' => ['required', 'date'],
+            'reason' => ['required', Rule::in(array_keys(self::CESSATION_REASONS))],
+        ], [
+            'last_day.required' => 'Enter the last day they worked.',
+            'last_day.date' => 'Enter a valid date.',
+            'reason.required' => 'Choose why employment ended.',
+            'reason.in' => 'Choose one of the listed reasons.',
+        ]);
+        if ($v->fails()) {
+            return $this->failure('Please fix the highlighted fields.', 422, $v->errors()->toArray());
+        }
+        $d = $v->validated();
+        if ($e->emp_start_date && Carbon::parse($d['last_day'])->lt($e->emp_start_date)) {
+            return $this->failure('Please fix the highlighted fields.', 422, ['last_day' => ['The last day cannot be before their start date.']]);
+        }
+        $e->forceFill([
+            'emp_status' => 'Inactive', 'emp_last_working_date' => $d['last_day'], 'emp_cessation_reason' => $d['reason'],
+        ])->save();
         return response()->json(['data' => $this->full($e->fresh())]);
     }
 
@@ -334,6 +364,9 @@ class EmployeeController extends Controller
             'pay_summary' => $this->paySummary($j),
             'start_date' => $e->emp_start_date?->toDateString(),
             'status' => $e->emp_status === 'Active' ? 'active' : 'archived',
+            'last_day' => $e->emp_last_working_date ? Carbon::parse($e->emp_last_working_date)->toDateString() : null,
+            'cessation_reason' => $e->emp_cessation_reason,
+            'cessation_label' => self::CESSATION_REASONS[$e->emp_cessation_reason] ?? null,
         ];
     }
 
