@@ -376,12 +376,19 @@ class PayRunController extends Controller
             return $this->failure('Some lines need your attention before this can be finalised.', 422, ['lines' => implode('. ', $problems) . '.']);
         }
         $run->forceFill([
-            'status' => 'finalised', 'finalised_at' => now(),
+            'status' => 'finalised', 'finalised_at' => now(), 'finalised_by' => auth()->guard('api')->id(),
             'super_due_date' => $this->addBusinessDays(Carbon::parse($run->pay_date), 7)->toDateString(),
         ])->save();
         LeaveService::accrueForRun($run->fresh());   // staff build up leave from the hours in this run
         return response()->json(['data' => $this->full($run->fresh(), $b)]);
         });
+    }
+
+    /** A person's name for the audit lines, or null when it was not recorded. */
+    private function userName($id): ?string
+    {
+        $u = $id ? \App\Models\User::find($id) : null;
+        return $u ? trim($u->first_name . ' ' . $u->last_name) : null;
     }
 
     /** Records (or undoes) that the employer paid the super for a finalised run. */
@@ -397,7 +404,8 @@ class PayRunController extends Controller
         if ($run->status !== 'finalised') {
             return $this->failure('Super can be marked as paid once the pay run is finalised.', 422);
         }
-        $run->forceFill(['super_paid_at' => $request->boolean('paid', true) ? now() : null])->save();
+        $paid = $request->boolean('paid', true);
+        $run->forceFill(['super_paid_at' => $paid ? now() : null, 'super_paid_by' => $paid ? auth()->guard('api')->id() : null])->save();
         return response()->json(['data' => $this->full($run->fresh(), $b)]);
     }
 
@@ -624,6 +632,8 @@ class PayRunController extends Controller
             'super_due_date' => $r->super_due_date?->toDateString(),
             'super_paid_at' => $r->super_paid_at ? Carbon::parse($r->super_paid_at)->toIso8601String() : null,
             'finalised_at' => $r->finalised_at?->toIso8601String(),
+            'finalised_by' => $this->userName($r->finalised_by),
+            'super_paid_by' => $this->userName($r->super_paid_by),
             'employer' => $this->presentSeller($business), 'super_rate' => (float) $r->super_rate,
             'needs_attention' => $needs,
             'can' => ['edit' => $draft, 'finalise' => $draft && $lines->count() > 0, 'delete' => $draft],
