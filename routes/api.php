@@ -293,6 +293,7 @@ Route::middleware(['auth:api', 'company.context', 'role.access'])->group(functio
         Route::delete('/feed/links/{id}', [$feed, 'disconnect'])->whereNumber('id');
         Route::post('/feed/accounts/{id}/sync', [$feed, 'sync'])->whereNumber('id');
         Route::post('/transactions/{id}/status', [$txn, 'setStatus'])->whereNumber('id');
+        Route::post('/transactions/bulk-status', [$txn, 'bulkStatus']);
     });
 
     Route::prefix('sales')->group(function () {

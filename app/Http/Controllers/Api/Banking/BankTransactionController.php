@@ -57,6 +57,17 @@ class BankTransactionController extends Controller
         if ($s = trim((string) $request->query('search', ''))) {
             $q->where('description', 'like', '%' . $s . '%');
         }
+        foreach (['from' => '>=', 'to' => '<='] as $key => $op) {
+            $d = (string) $request->query($key, '');
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
+                $q->where('txn_date', $op, $d);
+            }
+        }
+        if ($request->query('type') === 'in') {
+            $q->where('amount', '>', 0);
+        } elseif ($request->query('type') === 'out') {
+            $q->where('amount', '<', 0);
+        }
         $page = $q->orderByDesc('txn_date')->orderByDesc('id')->paginate(min(max((int) $request->query('per_page', 25), 1), 100));
         $names = BusinessBankAccount::where('company_id', $b->company_id)->pluck('name', 'id');
 
@@ -109,5 +120,22 @@ class BankTransactionController extends Controller
         $t->status = $to;
         $t->save();
         return response()->json(['data' => $this->row($t), 'message' => $to === 'excluded' ? 'Excluded.' : 'Back in review.']);
+    }
+
+    /** Exclude or put back several lines at once. Lines that are already done are left alone. */
+    public function bulkStatus(Request $request): JsonResponse
+    {
+        if (!$b = $this->business()) {
+            return $this->noBusiness();
+        }
+        $to = $request->input('status');
+        $ids = array_values(array_filter(array_map('intval', (array) $request->input('ids', []))));
+        if (!in_array($to, ['excluded', 'review'], true) || !$ids) {
+            return $this->failure('Choose the lines and whether to exclude them or put them back.', 422);
+        }
+        $changed = BankTransaction::where('company_id', $b->company_id)->whereIn('id', array_slice($ids, 0, 500))
+            ->where('status', '!=', 'done')->where('status', '!=', $to)->update(['status' => $to, 'updated_at' => now()]);
+        return response()->json(['data' => ['changed' => $changed],
+            'message' => $changed . ' transaction' . ($changed === 1 ? '' : 's') . ($to === 'excluded' ? ' excluded.' : ' put back.')]);
     }
 }
