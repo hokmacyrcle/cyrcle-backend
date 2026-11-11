@@ -51,6 +51,46 @@ class PayCalculator
         [PHP_INT_MAX, 4700, 4931893],
     ];
 
+    /**
+     * Study and training loan (HELP, VSL, SSL, ABSTUDY SSL, TSL) component, ATO Schedule 8 for payments from 1 July 2026.
+     * Same layout as the tax tables: [weekly earnings upper limit in dollars, a * 10000, b * 10000].
+     * Used where the tax-free threshold is claimed, or the payee is a foreign resident.
+     */
+    private const STSL_THRESHOLD = [
+        [1337, null, null],
+        [2494, 1500, 2005615],
+        [3577, 1700, 2504527],
+        [PHP_INT_MAX, 1000, 0],
+    ];
+
+    /** Study loan component where the tax-free threshold is not claimed. */
+    private const STSL_NO_THRESHOLD = [
+        [987, null, null],
+        [2144, 1500, 1480615],
+        [2727, 1700, 1909527],
+        [PHP_INT_MAX, 1000, 0],
+    ];
+
+    /**
+     * Study and training loan repayment to withhold with this payment, in cents. $scale is the tax scale used for the
+     * payment. Nothing is withheld for a payee without a tax file number.
+     */
+    public static function studyLoan(int $grossCents, string $frequency, string $scale): int
+    {
+        if ($grossCents <= 0 || $scale === self::SCALE_NO_TFN) {
+            return 0;
+        }
+        $table = $scale === self::SCALE_NO_THRESHOLD ? self::STSL_NO_THRESHOLD : self::STSL_THRESHOLD;
+        $weeklyDollars = self::weeklyWithholdingDollars(self::weeklyEarningsCents($grossCents, $frequency), $table);
+
+        return match ($frequency) {
+            self::WEEKLY => $weeklyDollars * 100,
+            self::FORTNIGHTLY => $weeklyDollars * 2 * 100,
+            self::MONTHLY => intdiv($weeklyDollars * 26 + 3, 6) * 100,   // weekly x 13 / 3, nearest dollar
+            default => throw new \InvalidArgumentException('Unknown pay frequency.'),
+        };
+    }
+
     /** Withholding for one payment. $grossCents is the taxable earnings for the period. */
     public static function withholding(int $grossCents, string $frequency, string $scale, bool $foreignResident = false): int
     {

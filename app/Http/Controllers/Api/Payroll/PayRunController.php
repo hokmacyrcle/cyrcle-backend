@@ -508,6 +508,7 @@ class PayRunController extends Controller
             }
         }
         $grossC = $baseC + $earnC;
+        $loanC = 0;
 
         $tax = TaxDetail::where('employee_id', $l->employee_id)->first();
         $hasTfn = $tax && !empty($tax->getRawOriginal('tax_file_number'));
@@ -524,10 +525,13 @@ class PayRunController extends Controller
             $note = $whm ? 'Working holiday maker: enter the tax to withhold.' : 'Foreign resident: enter the tax to withhold.';
         } else {
             $scale = $tax->claim_tax_free_threshold ? Calc::SCALE_THRESHOLD : Calc::SCALE_NO_THRESHOLD;
-            if ($loan) {
-                $status = 'review';
-                $note = 'Study and training loan repayments are not included. Add them to the tax, then confirm.';
-            }
+        }
+        if ($loan && !$scale) {
+            $note = trim(($note ?? '') . ' This employee has a study and training loan, so include the repayment in the tax you enter.');
+        }
+
+        if ($loan && $scale) {
+            $loanC = Calc::studyLoan($grossC, $freq, $scale);   // shown on its own line on the payslip
         }
 
         if ($l->tax_overridden) {
@@ -535,6 +539,7 @@ class PayRunController extends Controller
             $method = 'manual';
         } else {
             $taxC = $scale ? Calc::withholding($grossC, $freq, $scale, $foreign) : 0;
+            $taxC += $loanC;   // the study loan repayment is part of the tax withheld
             $method = $scale ?: 'manual';
             if ($status === 'auto' || $grossC === 0) {
                 $l->tax_confirmed = $status === 'auto' ? false : $l->tax_confirmed;
@@ -544,7 +549,9 @@ class PayRunController extends Controller
         $l->reimbursements = $reimbC / 100;
         $l->deductions = $dedC / 100;
         $l->gross = $grossC / 100;
+        $loanC = min($loanC, $taxC);   // an overridden tax can be lower than the calculated repayment
         $l->tax = $taxC / 100;
+        $l->study_loan = $loanC / 100;
         $l->tax_method = $method;
         $l->tax_status = $status;
         $l->tax_note = $note;
@@ -631,7 +638,7 @@ class PayRunController extends Controller
                     'amount' => $this->money(Calc::hourlyGrossCents(LeaveService::hundredths($q->hours), $this->cents($l->hourly_rate)) / 100),
                 ])->values(),
                 'hours_source' => $l->hours_source, 'hours_confirmed' => (bool) $l->hours_confirmed,
-                'gross' => $this->money($l->gross), 'tax' => $this->money($l->tax),
+                'gross' => $this->money($l->gross), 'tax' => $this->money($l->tax), 'study_loan' => $this->money($l->study_loan ?? 0),
                 'super_amount' => $this->money($l->super_amount), 'net' => $this->money($l->net),
                 'tax_method' => $l->tax_method, 'tax_status' => $l->tax_status, 'tax_note' => $l->tax_note,
                 'tax_overridden' => (bool) $l->tax_overridden, 'tax_confirmed' => (bool) $l->tax_confirmed,

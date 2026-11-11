@@ -44,4 +44,14 @@ class PayCalculatorTest extends TestCase
         $this->assertSame(247000, P::hourlyGrossCents(7600, 3250));
         $this->assertSame(11099, P::hourlyGrossCents(333, 3333));
     }
+
+    /** Study and training loan component, ATO Schedule 8 (payments from 1 July 2026). */
+    public function test_study_loan_repayments(): void
+    {
+        $this->assertSame(0, P::studyLoan(133799, P::WEEKLY, P::SCALE_THRESHOLD));        // below the $1,337 weekly threshold
+        $this->assertSame(10000, P::studyLoan(200000, P::WEEKLY, P::SCALE_THRESHOLD));    // 0.15 x 2000.99 - 200.5615 = 99.59
+        $this->assertSame(20000, P::studyLoan(400000, P::FORTNIGHTLY, P::SCALE_THRESHOLD));
+        $this->assertSame(0, P::studyLoan(98700, P::WEEKLY, P::SCALE_NO_THRESHOLD));
+        $this->assertSame(0, P::studyLoan(500000, P::WEEKLY, P::SCALE_NO_TFN));           // nothing without a tax file number
+    }
 }

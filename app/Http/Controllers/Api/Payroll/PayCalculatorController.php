@@ -26,6 +26,7 @@ class PayCalculatorController extends Controller
             'frequency' => ['required', Rule::in([Calc::WEEKLY, Calc::FORTNIGHTLY, Calc::MONTHLY])],
             'situation' => ['required', Rule::in(self::SITUATIONS)],
             'amount' => ['required', 'numeric', 'min:0', 'max:9999999.99', $this->twoDecimals('Amount')],
+            'study_loan' => ['nullable', 'boolean'],
             'hours' => ['nullable', 'required_if:basis,hourly', 'numeric', 'min:0', 'max:744', $this->twoDecimals('Hours')],
         ], [
             'basis.required' => 'Choose what you are entering.',
@@ -56,10 +57,13 @@ class PayCalculatorController extends Controller
             default => [Calc::SCALE_NO_TFN, true, 'No tax file number, foreign resident (45%)'],
         };
         $taxC = Calc::withholding($grossC, $f, $scale, $foreign);
+        $loanC = $request->boolean('study_loan') ? Calc::studyLoan($grossC, $f, $scale) : 0;   // part of the tax withheld
+        $taxC += $loanC;
 
         return response()->json(['data' => [
             'gross' => $grossC / 100,
             'tax' => $taxC / 100,
+            'study_loan' => $loanC / 100,
             'super' => Calc::superCents($grossC, $rate) / 100,
             'super_rate' => $rate / 100,
             'net' => ($grossC - $taxC) / 100,
