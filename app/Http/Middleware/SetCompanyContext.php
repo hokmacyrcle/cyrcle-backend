@@ -18,6 +18,16 @@ class SetCompanyContext
     {
         $user = Auth::guard('api')->user();
         
+        // Employees have no companies of their own: their company comes from their employee record.
+        if ($user && ($user->role ?? 'employer') === 'employee' && $user->employee_id) {
+            $employee = \App\Models\Employee::where('emp_id', $user->employee_id)->first();
+            if ($employee) {
+                $user->company_id = $employee->emp_company_id;
+                $request->merge(['company_id' => $employee->emp_company_id]);
+            }
+            return $next($request);
+        }
+
         if ($user) {
             // Get company context from cache using the token
             $token = $request->bearerToken();

@@ -3,15 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-use App\Http\Controllers\Api\Employees\EmploymentInformationInsertController;
-use App\Http\Controllers\Api\Employees\EmployeeController;
-use App\Http\Controllers\Api\Employees\EmployeeFormController;
-use App\Http\Controllers\Api\Employees\TaxController;
-use App\Http\Controllers\Api\Employees\PayTemplateController;
-use App\Http\Controllers\Api\Employees\EmployeeLeaveController;
 use App\Http\Controllers\Api\AccountController;
-use App\Http\Controllers\Api\DeductionController;
-use App\Http\Controllers\Api\BankAccountController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\CompanyController;
 
@@ -30,40 +22,11 @@ use App\Http\Controllers\Api\CompanyController;
 Route::post('/register', [App\Http\Controllers\Api\Auth\AuthController::class, 'register']);
 Route::post('/login', [App\Http\Controllers\Api\Auth\AuthController::class, 'login']);
 
-// Test routes for debugging Hostinger issues
-Route::get('/test-auth', function () {
-    return response()->json([
-        'status' => true,
-        'message' => 'Public API endpoint working',
-        'timestamp' => now()
-    ]);
-});
-
-// Test route without any middleware
-Route::get('/public-test', function () {
-    return response()->json([
-        'status' => true,
-        'message' => 'Public endpoint - no middleware',
-        'timestamp' => now(),
-        'php_version' => PHP_VERSION,
-        'laravel_version' => app()->version()
-    ]);
-});
-
-// Debug route to check token without middleware
-Route::get('/debug-token', function (Request $request) {
-    $headers = $request->headers->all();
-    $authHeader = $request->header('Authorization');
-    
-    return response()->json([
-        'status' => true,
-        'message' => 'Token debug info',
-        'has_authorization_header' => !empty($authHeader),
-        'authorization_header' => $authHeader,
-        'all_headers' => $headers,
-        'bearer_token' => $request->bearerToken(),
-        'timestamp' => now()
-    ]);
+// Firm sign-up steps 2-4 (token from /register; no company context needed yet)
+Route::middleware('auth:api')->group(function () {
+    Route::post('/email/send-code', [App\Http\Controllers\Api\Auth\FirmSignupController::class, 'sendCode'])->middleware('throttle:5,1');
+    Route::post('/email/verify', [App\Http\Controllers\Api\Auth\FirmSignupController::class, 'verifyCode'])->middleware('throttle:10,1');
+    Route::post('/firm/register', [App\Http\Controllers\Api\Auth\FirmSignupController::class, 'registerFirm']);
 });
 
 Route::get('/ping', function () {
@@ -76,10 +39,7 @@ Route::get('/ping', function () {
 
 Route::get('/health', function () {
     return response()->json([
-        'status' => 'healthy',
-        'environment' => app()->environment(),
-        'php_version' => PHP_VERSION,
-        'laravel_version' => app()->version()
+        'status' => 'healthy'
     ]);
 });
 
@@ -91,7 +51,7 @@ Route::post('/forgot-password/reset', [App\Http\Controllers\Api\Auth\ForgotPassw
 
 
 
-Route::middleware(['auth:api', 'company.context'])->group(function () {
+Route::middleware(['auth:api', 'company.context', 'role.access'])->group(function () {
     // Simple test route to check if auth:api middleware is working
     Route::get('/auth-test', function (Request $request) {
         return response()->json([
@@ -231,6 +191,9 @@ Route::middleware(['auth:api', 'company.context'])->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
+
+    // Employee self-service (the only area employees can reach; see EnsureRoleAccess)
+    Route::get('/me', [App\Http\Controllers\Api\MeController::class, 'show']);
     
     // Company management routes
     Route::get('/user/company', [App\Http\Controllers\Api\CompanyController::class, 'getUserCompanies']);
@@ -252,13 +215,10 @@ Route::middleware(['auth:api', 'company.context'])->group(function () {
     Route::get('/contacts/{contact}/audit-history', [App\Http\Controllers\Api\ContactController::class, 'auditHistory']);
     Route::post('/contacts/bulk-update-status', [App\Http\Controllers\Api\ContactController::class, 'bulkUpdateStatus']);
     Route::get('/contacts/statistics', [App\Http\Controllers\Api\ContactController::class, 'getStatistics']);
-    Route::get('/contacts/test-auth', [App\Http\Controllers\Api\ContactController::class, 'testAuth']);
 
     // Company routes
     Route::apiResource('companies', App\Http\Controllers\Api\CompanyController::class);
-    Route::get('/companies/active/list', [App\Http\Controllers\Api\CompanyController::class, 'active']);
     Route::patch('/companies/{company}/toggle-status', [App\Http\Controllers\Api\CompanyController::class, 'toggleStatus']);
-    Route::get('/companies/{company}/audit-history', [App\Http\Controllers\Api\CompanyController::class, 'auditHistory']);
     
     // Company attachments removed - use CommonAttachmentService instead
     
@@ -268,62 +228,139 @@ Route::middleware(['auth:api', 'company.context'])->group(function () {
     Route::delete('/bills/{id}/attachments', [App\Http\Controllers\Api\BillController::class, 'deleteAttachment']);
     Route::get('/bills/{id}/attachments/{filename}/download', [App\Http\Controllers\Api\BillController::class, 'downloadAttachment']);
 
-    Route::apiResource('employees', App\Http\Controllers\Api\Employees\EmployeeController::class);
-    Route::get('/employees-active', [App\Http\Controllers\Api\Employees\EmployeeController::class, 'active']);
-    Route::patch('/employees/{employee}/toggle-status', [App\Http\Controllers\Api\Employees\EmployeeController::class, 'toggleStatus']);
-    Route::get('/employees/{employee}/audit-history', [App\Http\Controllers\Api\Employees\EmployeeController::class, 'auditHistory']);
-    Route::delete('/employees/{employee}', [App\Http\Controllers\Api\Employees\EmployeeController::class, 'destroy']); // explicit destroy
-
-    // Employee details endpoints
-    Route::get('/employee-details/{id}', [App\Http\Controllers\Api\Employees\EmployeeController::class, 'employee_details']);
-    Route::put('/update-employee-details/{id}', [App\Http\Controllers\Api\Employees\EmployeeController::class, 'updateEmployeeDetails']);
-    Route::get('/employee-dropdown', [App\Http\Controllers\Api\Employees\EmployeeController::class, 'employeeDropdown']);
-
-    // Employee Form API routes
-    Route::prefix('employee-form')->group(function () {
-        Route::get('/form-data', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'getFormData']);
-        Route::post('/', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'store']);
-        Route::get('/{id}', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'show']);
-        Route::get('/{id}/edit', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'edit']);
-        Route::put('/{id}', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'update']);
-        Route::delete('/{id}', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'destroy']);
-        Route::get('/search', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'search']);
-        
-        // Profile Image Management
-        Route::post('/{id}/profile-image', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'uploadProfileImage']);
-        Route::get('/{id}/profile-image', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'getProfileImage']);
-        Route::delete('/{id}/profile-image', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'deleteProfileImage']);
-        
-        // Attachments Management
-        Route::get('/{id}/attachments', [App\Http\Controllers\Api\Employees\EmployeeFormController::class, 'getAttachments']);
+    // Sales (Australian invoicing): the screens in Sales use these. Everything is limited to the selected business.
+    // Payroll: employees of the business being worked in
+    Route::prefix('payroll')->group(function () {
+        Route::get('/employees', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'index']);
+        Route::post('/employees', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'store']);
+        Route::get('/employees/{id}', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'show'])->whereNumber('id');
+        Route::put('/employees/{id}', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'update'])->whereNumber('id');
+        Route::post('/employees/{id}/archive', [App\Http\Controllers\Api\Payroll\EmployeeController::class, 'setArchived'])->whereNumber('id');
+        Route::post('/pay-runs/{id}/lines/{lineId}/items', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'addItem'])->whereNumber('id')->whereNumber('lineId');
+        Route::delete('/pay-runs/{id}/lines/{lineId}/items/{itemId}', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'removeItem'])->whereNumber('id')->whereNumber('lineId')->whereNumber('itemId');
+        Route::post('/pay-runs/{id}/lines/{lineId}/leave', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'addLeave'])->whereNumber('id')->whereNumber('lineId');
+        Route::get('/leave', [App\Http\Controllers\Api\Payroll\LeaveController::class, 'index']);
+        Route::put('/leave/types/{id}', [App\Http\Controllers\Api\Payroll\LeaveController::class, 'updateType'])->whereNumber('id');
+        Route::get('/leave/requests', [App\Http\Controllers\Api\Payroll\LeaveController::class, 'requests']);
+        Route::post('/leave/requests', [App\Http\Controllers\Api\Payroll\LeaveController::class, 'storeRequest']);
+        Route::post('/leave/requests/{id}/approve', [App\Http\Controllers\Api\Payroll\LeaveController::class, 'approve'])->whereNumber('id');
+        Route::post('/leave/requests/{id}/decline', [App\Http\Controllers\Api\Payroll\LeaveController::class, 'decline'])->whereNumber('id');
+        Route::delete('/leave/requests/{id}', [App\Http\Controllers\Api\Payroll\LeaveController::class, 'destroy'])->whereNumber('id');
+        Route::post('/leave/adjustments', [App\Http\Controllers\Api\Payroll\LeaveController::class, 'adjust']);
+        Route::get('/leave/employees/{employeeId}/ledger', [App\Http\Controllers\Api\Payroll\LeaveController::class, 'ledger'])->whereNumber('employeeId');
+        Route::get('/timesheets', [App\Http\Controllers\Api\Payroll\TimesheetController::class, 'index']);
+        Route::put('/timesheets/{employeeId}', [App\Http\Controllers\Api\Payroll\TimesheetController::class, 'save'])->whereNumber('employeeId');
+        Route::post('/timesheets/{employeeId}/approve', [App\Http\Controllers\Api\Payroll\TimesheetController::class, 'approve'])->whereNumber('employeeId');
+        Route::post('/pay-runs/{id}/refresh-hours', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'refreshHours'])->whereNumber('id');
+        Route::get('/pay-runs/{id}/bank-file', [App\Http\Controllers\Api\Payroll\BankFileController::class, 'show'])->whereNumber('id');
+        Route::get('/pay-runs/{id}/stp', [App\Http\Controllers\Api\Payroll\StpController::class, 'show'])->whereNumber('id');
+        Route::get('/overview', [App\Http\Controllers\Api\Payroll\PayrollOverviewController::class, 'show']);
+        Route::post('/pay-runs/{id}/super-paid', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'superPaid'])->whereNumber('id');
+        Route::get('/settings', [App\Http\Controllers\Api\Payroll\PayrollSettingsController::class, 'show']);
+        Route::put('/settings', [App\Http\Controllers\Api\Payroll\PayrollSettingsController::class, 'update']);
+        Route::get('/history', [App\Http\Controllers\Api\Payroll\PayHistoryController::class, 'index']);
+        Route::post('/calculator', [App\Http\Controllers\Api\Payroll\PayCalculatorController::class, 'calculate']);
+        Route::get('/pay-runs', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'index']);
+        Route::post('/pay-runs', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'store']);
+        Route::get('/pay-runs/{id}', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'show'])->whereNumber('id');
+        Route::delete('/pay-runs/{id}', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'destroy'])->whereNumber('id');
+        Route::post('/pay-runs/{id}/finalise', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'finalise'])->whereNumber('id');
+        Route::put('/pay-runs/{id}/lines/{lineId}', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'updateLine'])->whereNumber('id')->whereNumber('lineId');
+        Route::delete('/pay-runs/{id}/lines/{lineId}', [App\Http\Controllers\Api\Payroll\PayRunController::class, 'destroyLine'])->whereNumber('id')->whereNumber('lineId');
     });
 
-    // Invoice CRUD routes
-    Route::apiResource('invoices', App\Http\Controllers\Api\InvoiceController::class);
+    Route::prefix('banking')->group(function () {
+        $acct = App\Http\Controllers\Api\Banking\BankAccountController::class;
+        $imp = App\Http\Controllers\Api\Banking\BankImportController::class;
+        $txn = App\Http\Controllers\Api\Banking\BankTransactionController::class;
+        Route::get('/accounts', [$acct, 'index']);
+        Route::post('/accounts', [$acct, 'store']);
+        Route::put('/accounts/{id}', [$acct, 'update'])->whereNumber('id');
+        Route::post('/accounts/{id}/archive', [$acct, 'archive'])->whereNumber('id');
+        Route::post('/accounts/{id}/import/preview', [$imp, 'preview'])->whereNumber('id');
+        Route::post('/accounts/{id}/import', [$imp, 'store'])->whereNumber('id');
+        Route::delete('/imports/{id}', [$imp, 'undo'])->whereNumber('id');
+        Route::get('/accounts/{id}/transactions', [$txn, 'index'])->whereNumber('id');
+        Route::get('/transactions', [$txn, 'all']);
+        Route::get('/transactions/export', [$txn, 'export']);
+        Route::get('/summary', [$txn, 'summary']);
+
+        $feed = App\Http\Controllers\Api\Banking\BankFeedController::class;
+        Route::get('/feed/status', [$feed, 'status']);
+        Route::get('/feed/institutions', [$feed, 'institutions']);
+        Route::post('/feed/start', [$feed, 'start']);
+        Route::get('/feed/links/{id}/accounts', [$feed, 'accounts'])->whereNumber('id');
+        Route::post('/feed/links/{id}/connect', [$feed, 'connect'])->whereNumber('id');
+        Route::delete('/feed/links/{id}', [$feed, 'disconnect'])->whereNumber('id');
+        Route::post('/feed/accounts/{id}/sync', [$feed, 'sync'])->whereNumber('id');
+        Route::post('/transactions/{id}/status', [$txn, 'setStatus'])->whereNumber('id');
+        Route::post('/transactions/bulk-status', [$txn, 'bulkStatus']);
+
+        $rec = App\Http\Controllers\Api\Banking\ReconcileController::class;
+        Route::get('/reconcile/{accountId}', [$rec, 'start'])->whereNumber('accountId');
+        Route::get('/reconcile/{accountId}/lines', [$rec, 'lines'])->whereNumber('accountId');
+        Route::post('/reconcile/{accountId}', [$rec, 'finish'])->whereNumber('accountId');
+        Route::delete('/reconcile/{id}', [$rec, 'undo'])->whereNumber('id');
+
+        $chart = App\Http\Controllers\Api\Banking\ChartAccountController::class;
+        Route::get('/chart-accounts', [$chart, 'index']);
+        Route::post('/chart-accounts', [$chart, 'store']);
+        Route::put('/chart-accounts/{id}', [$chart, 'update'])->whereNumber('id');
+        Route::post('/chart-accounts/{id}/archive', [$chart, 'archive'])->whereNumber('id');
+
+        $rcp = App\Http\Controllers\Api\Banking\BankReceiptController::class;
+        Route::get('/receipts', [$rcp, 'index']);
+        Route::post('/receipts', [$rcp, 'store']);
+        Route::get('/receipts/{id}/file', [$rcp, 'view'])->whereNumber('id');
+        Route::post('/receipts/{id}/scan', [$rcp, 'scan'])->whereNumber('id');
+        Route::put('/receipts/{id}', [$rcp, 'update'])->whereNumber('id');
+        Route::delete('/receipts/{id}', [$rcp, 'destroy'])->whereNumber('id');
+    });
+
+    Route::prefix('sales')->group(function () {
+        Route::get('/firm/overdue', [App\Http\Controllers\Api\Sales\FirmOverdueController::class, 'show']);
+        Route::get('/summary', [App\Http\Controllers\Api\Sales\SummaryController::class, 'show']);
+        Route::get('/business', [App\Http\Controllers\Api\Sales\SummaryController::class, 'businessInfo']);
+
+        Route::get('/invoices', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'index']);
+        Route::post('/invoices', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'store']);
+        Route::get('/invoices/{id}', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'show'])->whereNumber('id');
+        Route::put('/invoices/{id}', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'update'])->whereNumber('id');
+        Route::delete('/invoices/{id}', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'destroy'])->whereNumber('id');
+        Route::get('/invoices/{id}/reminder', [App\Http\Controllers\Api\Sales\InvoiceReminderController::class, 'show'])->whereNumber('id');
+        Route::post('/invoices/{id}/reminders', [App\Http\Controllers\Api\Sales\InvoiceReminderController::class, 'store'])->whereNumber('id');
+        Route::post('/invoices/{id}/issue', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'issue'])->whereNumber('id');
+        Route::post('/invoices/{id}/void', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'void'])->whereNumber('id');
+        Route::post('/invoices/{id}/payments', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'addPayment'])->whereNumber('id');
+        Route::delete('/invoices/{id}/payments/{transactionId}', [App\Http\Controllers\Api\Sales\InvoiceController::class, 'removePayment'])->whereNumber('id')->whereNumber('transactionId');
+
+        Route::get('/recurring-invoices', [App\Http\Controllers\Api\Sales\RecurringInvoiceController::class, 'index']);
+        Route::post('/recurring-invoices', [App\Http\Controllers\Api\Sales\RecurringInvoiceController::class, 'store']);
+        Route::put('/recurring-invoices/{id}', [App\Http\Controllers\Api\Sales\RecurringInvoiceController::class, 'update'])->whereNumber('id');
+        Route::delete('/recurring-invoices/{id}', [App\Http\Controllers\Api\Sales\RecurringInvoiceController::class, 'destroy'])->whereNumber('id');
+
+        Route::get('/quotes', [App\Http\Controllers\Api\Sales\QuoteController::class, 'index']);
+        Route::post('/quotes', [App\Http\Controllers\Api\Sales\QuoteController::class, 'store']);
+        Route::get('/quotes/{id}', [App\Http\Controllers\Api\Sales\QuoteController::class, 'show'])->whereNumber('id');
+        Route::put('/quotes/{id}', [App\Http\Controllers\Api\Sales\QuoteController::class, 'update'])->whereNumber('id');
+        Route::delete('/quotes/{id}', [App\Http\Controllers\Api\Sales\QuoteController::class, 'destroy'])->whereNumber('id');
+        Route::post('/quotes/{id}/status', [App\Http\Controllers\Api\Sales\QuoteController::class, 'setStatus'])->whereNumber('id');
+        Route::post('/quotes/{id}/convert', [App\Http\Controllers\Api\Sales\QuoteController::class, 'convert'])->whereNumber('id');
+
+        Route::get('/customers', [App\Http\Controllers\Api\Sales\CustomerController::class, 'index']);
+        Route::post('/customers', [App\Http\Controllers\Api\Sales\CustomerController::class, 'store']);
+        Route::get('/customers/{id}', [App\Http\Controllers\Api\Sales\CustomerController::class, 'show'])->whereNumber('id');
+        Route::put('/customers/{id}', [App\Http\Controllers\Api\Sales\CustomerController::class, 'update'])->whereNumber('id');
+        Route::post('/customers/{id}/archive', [App\Http\Controllers\Api\Sales\CustomerController::class, 'setArchived'])->whereNumber('id');
+    });
+
+    // Older invoice routes (the old Sales screens). The Sales screens now use /sales/... above.
+    // Only the routes that already limit data to the selected business are kept; the rest were removed because
+    // they could read or change another business's invoices by id (dashboard, overdue, by-status, items,
+    // transactions, attachments, discount, tax, summary, PDF export).
     Route::get('/invoices/statistics', [App\Http\Controllers\Api\InvoiceController::class, 'statistics']);
-    Route::get('/invoices/dashboard', [App\Http\Controllers\Api\InvoiceController::class, 'dashboard']);
     Route::get('/invoices/form-data', [App\Http\Controllers\Api\InvoiceController::class, 'getFormData']);
-    
-    // invoice routes with items and transactions
-    Route::get('/invoices/{invoice}/items', [App\Http\Controllers\Api\InvoiceController::class, 'getInvoiceItems']);
-    Route::get('/invoices/{invoice}/transactions', [App\Http\Controllers\Api\InvoiceController::class, 'getInvoiceTransactions']);
-    Route::post('/invoices/{invoice}/transactions', [App\Http\Controllers\Api\InvoiceController::class, 'addTransaction']);
-    Route::get('/invoices/status/{status}', [App\Http\Controllers\Api\InvoiceController::class, 'getInvoicesByStatus']);
-    
-    Route::get('/invoices/overdue', [App\Http\Controllers\Api\InvoiceController::class, 'getOverdueInvoices']);
-    
-    // Invoice PDF export
-    Route::get('/invoices/export/pdf', [App\Http\Controllers\Api\InvoiceController::class, 'exportToPdf']);
-    
-    // Invoice attachments
-    Route::post('/invoices/{invoiceId}/attachments', [App\Http\Controllers\Api\InvoiceController::class, 'uploadAttachments']);
-    Route::get('/invoices/{invoiceId}/attachments', [App\Http\Controllers\Api\InvoiceController::class, 'getAttachments']);
-    Route::delete('/invoices/{invoiceId}/attachments', [App\Http\Controllers\Api\InvoiceController::class, 'deleteAttachment']);
-    
-    // Discount and tax management routes
-    Route::put('/invoices/{invoice}/discount', [App\Http\Controllers\Api\InvoiceController::class, 'updateDiscount']);
-    Route::put('/invoices/{invoice}/tax', [App\Http\Controllers\Api\InvoiceController::class, 'updateTax']);
-    Route::get('/invoices/{invoice}/summary', [App\Http\Controllers\Api\InvoiceController::class, 'getInvoiceSummary']);
+    Route::apiResource('invoices', App\Http\Controllers\Api\InvoiceController::class);
 
     // Tax rates management
     Route::apiResource('tax-rates', App\Http\Controllers\Api\TaxRateController::class);
@@ -350,7 +387,6 @@ Route::middleware(['auth:api', 'company.context'])->group(function () {
     Route::get('/quotes/{quote}/versions/statistics', [App\Http\Controllers\Api\QuoteController::class, 'getVersionStatistics']);
 
     // Debug route for authentication testing
-    Route::get('/quotes/test-auth', [App\Http\Controllers\Api\QuoteController::class, 'testAuth']);
 
     // Quote attachment routes
     Route::post('/quotes/{quote}/attachments', [App\Http\Controllers\Api\QuoteController::class, 'uploadAttachments']);
@@ -384,66 +420,6 @@ Route::middleware(['auth:api', 'company.context'])->group(function () {
 
 
     
-    // Employment Information APIs
-    Route::prefix('employment-insert')->group(function () {
-        Route::post('/multiple', [EmploymentInformationInsertController::class, 'insertMultiple']);
-        Route::post('/bulk', [EmploymentInformationInsertController::class, 'bulkInsert']);
-        Route::post('/superannuation', [EmploymentInformationInsertController::class, 'updateSuperannuation']);
-        Route::post('/authorized-fields', [EmploymentInformationInsertController::class, 'updateAuthorizedFields']);
-        Route::get('/statistics', [EmploymentInformationInsertController::class, 'getStatistics']);
-        Route::get('/employees-by-group', [EmploymentInformationInsertController::class, 'getEmployeesByGroup']);
-    });
-
-    // Endpoints to create/update and fetch single employment information
-    Route::post('/update-employee-contract-information', [EmployeeController::class, 'updateEmployeeContractInformation']);
-    Route::get('/update-employee-contract-information/{employee_id}', [EmployeeController::class, 'getEmployeeContractInformation']);
-    
-    // Tax Details Management APIs
-    Route::prefix('tax-details')->group(function () {
-        Route::post('/', [App\Http\Controllers\Api\Employees\TaxController::class, 'store']);                    // Create tax details
-        Route::get('/{employee_id}', [App\Http\Controllers\Api\Employees\TaxController::class, 'show']);         // View tax details
-        Route::put('/{employee_id}', [App\Http\Controllers\Api\Employees\TaxController::class, 'update']);       // Update tax details
-    });
-    
-    // Bank Account Management APIs
-    Route::prefix('bank-accounts')->group(function () {
-        Route::post('/', [BankAccountController::class, 'store']);                         // Create bank account
-        Route::get('/{employee_id}', [BankAccountController::class, 'show']);             // View bank accounts for employee
-        Route::put('/{bank_account_id}', [BankAccountController::class, 'update']);       // Update bank account
-    });
-    
-    // Pay Template Management APIs
-    Route::prefix('pay-templates')->group(function () {
-        Route::post('/', [App\Http\Controllers\Api\Employees\PayTemplateController::class, 'store']);                            // Create pay template
-        Route::get('/{pay_template_id}', [App\Http\Controllers\Api\Employees\PayTemplateController::class, 'show']);             // View specific pay template
-        Route::put('/{pay_template_id}', [App\Http\Controllers\Api\Employees\PayTemplateController::class, 'update']);           // Update pay template
-    });
-    
-    // Deduction Management APIs
-    Route::prefix('deductions')->group(function () {
-        Route::post('/', [DeductionController::class, 'store']);                         // Create deduction
-        Route::get('/{employee_id}', [DeductionController::class, 'show']);             // View deductions for employee
-        Route::put('/{deduction_id}', [DeductionController::class, 'update']);          // Update deduction
-    });
-
-    // Leave Requests
-    Route::get('/leave-requests', [EmployeeLeaveController::class, 'index']);
-    Route::get('/leave-requests/{leaveRequestId}', [EmployeeLeaveController::class, 'showLeave']);
-    Route::post('/leave-requests', [EmployeeLeaveController::class, 'store']);
-    Route::post('/leave-requests/{leaveRequestId}/approve', [EmployeeLeaveController::class, 'approveLeave']);
-    Route::post('/leave-requests/{leaveRequestId}/reject', [EmployeeLeaveController::class, 'rejectLeave']);
-
-    // Assign Leave Type Management
-    Route::post('/assign-leave-type', [EmployeeLeaveController::class, 'assignLeaveType']);
-    Route::get('/assign-leave-type/{id}', [EmployeeLeaveController::class, 'showAssignLeaveType']);
-    Route::get('/employees/{employeeId}/assign-leave-types', [EmployeeLeaveController::class, 'getEmployeeAssignLeaveTypes']);
-    Route::put('/assign-leave-type/{id}', [EmployeeLeaveController::class, 'updateAssignLeaveType']);
-    Route::delete('/assign-leave-type/{id}', [EmployeeLeaveController::class, 'deleteAssignLeaveType']);
-    Route::get('/leave-type-dropdowns', [EmployeeLeaveController::class, 'getLeaveTypeDropdowns']);
-    Route::get('/employees/{employeeId}/available-leave-types', [EmployeeLeaveController::class, 'getAvailableLeaveTypesForEmployee']);
-    Route::get('/employees/{employeeId}/leave-balances', [EmployeeLeaveController::class, 'getEmployeeLeaveBalances']);
-    Route::get('/employees/{employeeId}/leave-types/{leaveTypeId}/pay-period-hours', [EmployeeLeaveController::class, 'getPayPeriodHours']);
-
     // Accounts Management
     Route::post('/accounts', [AccountController::class, 'store']);
     Route::get('/accounts/{accountId}', [AccountController::class, 'getAccountById']);

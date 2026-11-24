@@ -46,13 +46,25 @@ class AuthController extends Controller
         }
         
         // Check if email already exists
-        if ($request->email && User::where('email', $request->email)->exists()) {
-            $errors['email'] = 'This email is already registered';
+        // An abandoned sign-up (email never verified, no firm, created in the last 24h) can be retried with the same email.
+        // Older unverified accounts are legacy users and are never overwritten.
+        $retry = null;
+        if ($request->email) {
+            $existing = User::where('email', $request->email)->first();
+            if ($existing) {
+                $hasFirm = \App\Models\Company::where('user_id', $existing->id)->exists();
+                if ($existing->email_verified_at === null && !$hasFirm && ($existing->role ?? 'employer') === 'employer'
+                    && $existing->created_at && $existing->created_at->gt(now()->subDay())) {
+                    $retry = $existing;
+                } else {
+                    $errors['email'] = 'This email is already registered';
+                }
+            }
         }
         
         // Check if phone already exists (if provided)
         if ($request->phone && $request->country_code) {
-            if (User::where('phone', $request->phone)->where('country_code', $request->country_code)->exists()) {
+            if (User::where('phone', $request->phone)->where('country_code', $request->country_code)->when($retry, fn ($q) => $q->where('id', '!=', $retry->id))->exists()) {
                 $errors['phone'] = 'This phone number is already registered for this country';
             }
         }
@@ -70,6 +82,20 @@ class AuthController extends Controller
         // Create full name from first, middle, and last name
         $fullName = trim($request->first_name . ' ' . ($request->middle_name ?? '') . ' ' . $request->last_name);
         
+        $fields = [
+            'name' => $fullName,
+            'first_name' => $request->first_name,
+            'middle_name' => $request->middle_name,
+            'last_name' => $request->last_name,
+            'phone' => $request->phone,
+            'country_code' => $request->country_code,
+            'password' => Hash::make($request->password),
+            'marketing_opt_in' => (bool) $request->marketing_opt_in,
+        ];
+        if ($retry) {
+            $retry->update($fields);
+            $user = $retry;
+        } else {
         $user = User::create([
             'name' => $fullName,
             'first_name' => $request->first_name,
@@ -79,7 +105,9 @@ class AuthController extends Controller
             'phone' => $request->phone,
             'country_code' => $request->country_code,
             'password' => Hash::make($request->password),
+            'marketing_opt_in' => (bool) $request->marketing_opt_in,
         ]);
+        }
 
         $token = $user->createToken('AuthToken')->accessToken;
 
@@ -125,6 +153,7 @@ class AuthController extends Controller
         $companies = [];
         if ($user->id) {
             $companies = \App\Models\Company::where('user_id', $user->id)
+                ->where(function ($q) { $q->whereNull('status')->orWhere('status', '!=', 'archived'); })
                 ->select('company_id', 'company_name', 'company_type', 'company_abn', 'company_acn')
                 ->get();
         }
@@ -137,6 +166,8 @@ class AuthController extends Controller
                 'user' => $user,
                 'companies' => $companies,
                 'companies_count' => $companies->count(),
+                'firm_status' => \App\Models\Company::where('user_id', $user->id)->where('company_type', 'Subscriber')->value('status'),
+                'email_verified' => (bool) $user->email_verified_at,
                 'access_token' => $token,
                 'token_type' => 'Bearer',
             ]

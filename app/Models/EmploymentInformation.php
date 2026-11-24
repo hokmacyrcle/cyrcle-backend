@@ -20,6 +20,10 @@ class EmploymentInformation extends Model
                 'start_date',
         'classification',
         'pay_frequency',
+        'pay_basis',
+        'hourly_rate',
+        'annual_salary',
+        'hours_per_week',
         'employee_group',
         'holiday_group',
         'include_holidays_in_payslips',
@@ -38,6 +42,9 @@ class EmploymentInformation extends Model
         'authorised_to_approve_leave' => 'boolean',
         'authorised_to_approve_timesheets' => 'boolean',
         'superannuation_memberships' => 'array',
+        'hourly_rate' => 'decimal:2',
+        'annual_salary' => 'decimal:2',
+        'hours_per_week' => 'decimal:2',
         'is_active' => 'boolean',
     ];
 

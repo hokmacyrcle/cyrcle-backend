@@ -27,7 +27,10 @@ class User extends Authenticatable
         'phone',
         'country_code',
         'subscription_id',
+        'role',
+        'employee_id',
         'password',
+        'marketing_opt_in',
     ];
 
     /**

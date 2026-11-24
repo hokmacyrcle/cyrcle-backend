@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Company;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Validator;
+use App\Rules\ValidAbn;
 
 class CompanyController extends Controller
 {
@@ -62,7 +64,7 @@ class CompanyController extends Controller
             ->where('user_id', $user->id)
             ->first();
             
-        if (!$company) {
+        if (!$company || $company->status === 'archived') {
             return response()->json([
                 'status' => false,
                 'status_code' => 403,
@@ -152,5 +154,207 @@ class CompanyController extends Controller
                 ]
             ]
         ], 200);
+    }
+
+    // ------------------------------------------------------------------
+    // Client businesses: companies of type Client that belong to the
+    // logged-in user's firm (the active Subscriber company they own).
+    // ------------------------------------------------------------------
+
+    private function firm(Request $request): ?Company
+    {
+        return Company::where('user_id', $request->user()->id)
+            ->where('company_type', 'Subscriber')
+            ->where('status', 'active')
+            ->first();
+    }
+
+    private function clientsOf(Company $firm)
+    {
+        return Company::where('company_type', 'Client')->where('subscriber_id', $firm->company_id);
+    }
+
+    private function present(Company $c): array
+    {
+        return [
+            'company_id' => $c->company_id,
+            'company_name' => $c->company_name,
+            'company_type' => $c->company_type,
+            'company_abn' => $c->company_abn,
+            'company_acn' => $c->company_acn,
+            'gst_registered' => (bool) $c->gst_registered,
+            'address_line' => $c->address_line,
+            'suburb' => $c->suburb,
+            'state' => $c->state,
+            'postcode' => $c->postcode,
+            'bank_account_name' => $c->bank_account_name,
+            'bank_bsb' => $c->bank_bsb,
+            'bank_account_number' => $c->bank_account_number,
+            'status' => $c->status ?? 'active',
+            'created_at' => optional($c->created_at)->toDateTimeString(),
+        ];
+    }
+
+
+    /** Where customers pay: shown on invoices. BSB is stored as 123-456. */
+    private function bankFields(Request $request): array
+    {
+        $bsb = preg_replace('/\D/', '', (string) $request->bank_bsb);
+        return [
+            'bank_account_name' => $request->bank_account_name ?: null,
+            'bank_bsb' => strlen($bsb) === 6 ? substr($bsb, 0, 3) . '-' . substr($bsb, 3) : null,
+            'bank_account_number' => $request->bank_account_number ?: null,
+        ];
+    }
+
+    private function ok(string $message, array $data = [], int $code = 200): JsonResponse
+    {
+        return response()->json(['status' => true, 'status_code' => $code, 'message' => $message, 'data' => $data], 200);
+    }
+
+    private function fail(int $code, string $message, $errors = null): JsonResponse
+    {
+        return response()->json(['status' => false, 'status_code' => $code, 'message' => $message, 'errors' => $errors], 200);
+    }
+
+    private function rules(?int $ignoreId = null): array
+    {
+        return [
+            'company_name' => ['required', 'string', 'max:255'],
+            'company_abn' => ['nullable', 'required_if:gst_registered,true,1', new ValidAbn],
+            'company_acn' => ['nullable', 'regex:/^\d{9}$/'],
+            'gst_registered' => ['boolean'],
+            'bank_account_name' => ['nullable', 'string', 'max:100'],
+            'bank_bsb' => ['nullable', 'regex:/^\d{3}-?\d{3}$/'],
+            'bank_account_number' => ['nullable', 'regex:/^\d{6,9}$/'],
+            'address_line' => ['required', 'string', 'max:255'],
+            'suburb' => ['required', 'string', 'max:100'],
+            'state' => ['required', 'in:NSW,VIC,QLD,WA,SA,TAS,ACT,NT'],
+            'postcode' => ['required', 'digits:4'],
+        ];
+    }
+
+    public function index(Request $request): JsonResponse
+    {
+        $firm = $this->firm($request);
+        if (!$firm) {
+            return $this->fail(403, 'Your firm is not active yet.');
+        }
+        $status = $request->query('status') === 'archived' ? 'archived' : 'active';
+        $q = $this->clientsOf($firm)->where('status', $status);
+        if ($search = trim((string) $request->query('search', ''))) {
+            $q->where('company_name', 'like', '%' . $search . '%');
+        }
+        $rows = $q->orderBy('company_name')->get()->map(fn ($c) => $this->present($c))->values();
+        return $this->ok('Client businesses', ['companies' => $rows, 'count' => $rows->count()]);
+    }
+
+    public function show(Request $request, $company): JsonResponse
+    {
+        $firm = $this->firm($request);
+        $c = $firm ? $this->clientsOf($firm)->where('company_id', $company)->first() : null;
+        if (!$c) {
+            return $this->fail(404, 'Client business not found.');
+        }
+        return $this->ok('Client business', ['company' => $this->present($c)]);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $firm = $this->firm($request);
+        if (!$firm) {
+            return $this->fail(403, 'Your firm is not active yet.');
+        }
+        $v = Validator::make($request->all(), $this->rules(), [
+            'company_acn.regex' => 'ACN must be 9 digits.',
+            'postcode.digits' => 'Postcode must be 4 digits.',
+            'company_abn.required_if' => 'A GST-registered business needs an ABN.',
+            'bank_bsb.regex' => 'BSB must be 6 digits, like 062-000.',
+            'bank_account_number.regex' => 'Account number must be 6 to 9 digits.',
+        ]);
+        if ($v->fails()) {
+            return $this->fail(400, 'Validation failed', $v->errors());
+        }
+        $abn = $request->company_abn ? preg_replace('/\s+/', '', $request->company_abn) : null;
+        if ($abn && $this->clientsOf($firm)->where('company_abn', $abn)->exists()) {
+            return $this->fail(400, 'Validation failed', ['company_abn' => ['You already have a client business with this ABN.']]);
+        }
+
+        $c = Company::create([
+            'company_name' => $request->company_name,
+            'company_abn' => $abn,
+            'company_acn' => $request->company_acn ? preg_replace('/\s+/', '', $request->company_acn) : null,
+            'gst_registered' => (bool) $request->gst_registered,
+            'company_type' => 'Client',
+            'subscriber_id' => $firm->company_id,
+            'user_id' => $request->user()->id,
+        ]);
+        $c->forceFill([
+            'status' => 'active',
+            'address_line' => $request->address_line,
+            'suburb' => $request->suburb,
+            'state' => $request->state,
+            'postcode' => $request->postcode,
+        ] + $this->bankFields($request))->save();
+
+        return $this->ok('Client business added', ['company' => $this->present($c)], 201);
+    }
+
+    public function update(Request $request, $company): JsonResponse
+    {
+        $firm = $this->firm($request);
+        $c = $firm ? $this->clientsOf($firm)->where('company_id', $company)->first() : null;
+        if (!$c) {
+            return $this->fail(404, 'Client business not found.');
+        }
+        $v = Validator::make($request->all(), $this->rules(), [
+            'company_acn.regex' => 'ACN must be 9 digits.',
+            'postcode.digits' => 'Postcode must be 4 digits.',
+            'company_abn.required_if' => 'A GST-registered business needs an ABN.',
+            'bank_bsb.regex' => 'BSB must be 6 digits, like 062-000.',
+            'bank_account_number.regex' => 'Account number must be 6 to 9 digits.',
+        ]);
+        if ($v->fails()) {
+            return $this->fail(400, 'Validation failed', $v->errors());
+        }
+        $abn = $request->company_abn ? preg_replace('/\s+/', '', $request->company_abn) : null;
+        if ($abn && $this->clientsOf($firm)->where('company_abn', $abn)->where('company_id', '!=', $c->company_id)->exists()) {
+            return $this->fail(400, 'Validation failed', ['company_abn' => ['You already have a client business with this ABN.']]);
+        }
+        $c->forceFill([
+            'company_name' => $request->company_name,
+            'company_abn' => $abn,
+            'company_acn' => $request->company_acn ? preg_replace('/\s+/', '', $request->company_acn) : null,
+            'gst_registered' => (bool) $request->gst_registered,
+            'address_line' => $request->address_line,
+            'suburb' => $request->suburb,
+            'state' => $request->state,
+            'postcode' => $request->postcode,
+        ] + $this->bankFields($request))->save();
+
+        return $this->ok('Client business updated', ['company' => $this->present($c)]);
+    }
+
+    /** Archive or restore (nothing is ever hard-deleted). */
+    public function toggleStatus(Request $request, $company): JsonResponse
+    {
+        $firm = $this->firm($request);
+        $c = $firm ? $this->clientsOf($firm)->where('company_id', $company)->first() : null;
+        if (!$c) {
+            return $this->fail(404, 'Client business not found.');
+        }
+        $c->forceFill(['status' => ($c->status === 'archived') ? 'active' : 'archived'])->save();
+        return $this->ok($c->status === 'archived' ? 'Client business archived' : 'Client business restored', ['company' => $this->present($c)]);
+    }
+
+    public function destroy(Request $request, $company): JsonResponse
+    {
+        $firm = $this->firm($request);
+        $c = $firm ? $this->clientsOf($firm)->where('company_id', $company)->first() : null;
+        if (!$c) {
+            return $this->fail(404, 'Client business not found.');
+        }
+        $c->forceFill(['status' => 'archived'])->save();
+        return $this->ok('Client business archived', ['company' => $this->present($c)]);
     }
 }

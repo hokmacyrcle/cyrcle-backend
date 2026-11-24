@@ -13,6 +13,7 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule): void
     {
         // $schedule->command('inspire')->hourly();
+        $schedule->command('invoices:recurring')->dailyAt('05:00')->timezone('Australia/Sydney')->withoutOverlapping();
     }
 
     /**

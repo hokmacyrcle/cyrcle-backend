@@ -32,6 +32,9 @@ class Invoice extends Model
         'payment_term_id',
         'notes',
         'terms',
+        'invoice_number',
+        'reference',
+        'amounts_are',
     ];
 
     protected $casts = [
